@@ -1,20 +1,21 @@
-all: server client
-
 CFLAGSDEBUG = -Wall -Og -g3
 
-debug:
-	server_debug client_debug
+all: server client
+
+# I prerequisiti vanno sulla stessa riga!
+debug: server_debug client_debug
 
 server:
-	@gcc src/server/main.c -o server
+	gcc src/server/*.c src/common/*.c -o server -lcrypto
 
 client:
-	@gcc src/client/main.c -o client
+	gcc src/client/*.c src/common/*.c -o client -lcrypto
 
 server_debug:
-	@gcc $(CFLAGSDEBUG) src/server/main.c -o server
+	gcc src/server/*.c src/common/*.c $(CFLAGSDEBUG) -o server
 
 client_debug:
-	@gcc $(CFLAGSDEBUG) src/client/main.c -o client
+	gcc src/client/*.c src/common/*.c $(CFLAGSDEBUG) -o client
 
-.PHONY: all debug server client server_debug client_debug
+# Rimosso server e client da PHONY per ripristinare il check dei timestamp
+.PHONY: all debug

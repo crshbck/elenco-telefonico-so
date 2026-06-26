@@ -1,0 +1,65 @@
+#include <stdio.h>
+#include <termios.h>
+#include <unistd.h>
+
+void set_raw_mode(struct termios *orig_opts)
+{
+	struct termios new_opts;
+
+	tcgetattr(STDIN_FILENO, orig_opts);
+	new_opts = *orig_opts;
+
+	new_opts.c_lflag &= ~(ICANON | ECHO);
+
+	tcsetattr(STDIN_FILENO, TCSANOW, &new_opts);
+}
+
+void reset_terminal_mode(struct termios *orig_opts) { tcsetattr(STDIN_FILENO, TCSANOW, orig_opts); }
+
+int main()
+{
+	struct termios orig_opts;
+	char ch;
+
+	// Entriamo in modalità RAW
+	set_raw_mode(&orig_opts);
+
+	printf("=== Elenco Telefonico ===\n"
+		   "1. Aggiungi \n"
+		   "q. Chiudi\n"
+		   "\n");
+
+	while (1)
+	{
+		// Legge il primo byte
+		read(STDIN_FILENO, &ch, 1);
+
+		// Verifica se è il tasto 'q' per uscire
+		if (ch == 'q')
+		{
+			break;
+		}
+
+		// Se il primo byte è 27 (0x1B ovvero ESC), potrebbe essere una freccia
+		if (ch == 27)
+		{
+			char seq[2];
+			read(STDIN_FILENO, &seq[0], 1) > 0 && read(STDIN_FILENO, &seq[1], 1);
+		}
+		else
+		{
+			// Se non è una sequenza di escape, stampa il carattere normale (es. lettere o numeri)
+			// Escludiamo i caratteri di controllo non stampabili come il backspace o tab
+			if (ch >= 32 && ch <= 126)
+			{
+				printf("Carattere normale premuto: %c\n", ch);
+			}
+		}
+	}
+
+	// RIPRISTINA il terminale prima di uscire, altrimenti la shell si rompe!
+	reset_terminal_mode(&orig_opts);
+	printf("\nTerminale ripristinato. Ciao!\n");
+
+	return 0;
+}
