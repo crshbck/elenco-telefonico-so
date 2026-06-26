@@ -1,0 +1,7 @@
+CompileFlags:
+    Add:
+        - "-isystem"
+        - "\\\\wsl.localhost\\Ubuntu-22.04\\usr\\include"
+        - "-isystem"
+        - "\\\\wsl.localhost\\Ubuntu-22.04\\usr\\include\\x86_64-linux-gnu"
+        - "-m64"
