@@ -1,4 +1,4 @@
-CFLAGSDEBUG = -Wall -Og -g3
+CFLAGSDEBUG = -Wall -Og -g3 -DDEBUG
 
 all: server client
 

@@ -1,13 +1,12 @@
 #ifndef REQUESTS_H
 #define REQUESTS_H
 
-typedef enum _status
-{
-	WRONG_CREDENTIALS,
-	SERVER_ERROR,
-	OK
-} status;
+#include "../protocol.h"
 
-status login(const char *username, const char *password);
+auth_level getAuthLevel();
+login_status login(const char *username, const char *password);
+signup_status signup(const char *username, const char *password);
+search_status search_contact(contact *buffer, const int max, size_t *count, const char *name);
+add_contact_status add_contact(char *name, char *phone_number);
 
 #endif
