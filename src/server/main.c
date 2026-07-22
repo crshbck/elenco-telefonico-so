@@ -1,4 +1,6 @@
 #include "../common/utils.h"
+#include "../protocol.h"
+#include "login.h"
 
 #include <netinet/in.h>
 #include <pthread.h>
@@ -14,11 +16,11 @@
 #define SERVER_PORT 5050
 #define MAX_CONNECTIONS 3
 
-struct connection_args
+typedef struct _connection_args
 {
 	int client_addr;
 	int conn_fd;
-};
+} connection_args;
 
 void *connection_handler(void *);
 
@@ -76,12 +78,20 @@ int main(int argc, char **argv)
 	{
 		int conn_fd = accept(sock_fd, (struct sockaddr *) &client_addr, &client_addrlen);
 
+		if (conn_fd == -1)
+		{
+			fprintf(stderr, "Socket accept error in thread!\n");
+			sem_post(&conn_sem);
+
+			return NULL;
+		}
+
 		// Accept connection
 		if (sem_trywait(&conn_sem) == 0)
 		{
 			pthread_t thread;
 
-			struct connection_args *args = malloc(sizeof(struct connection_args));
+			connection_args *args = malloc(sizeof(connection_args));
 			args->client_addr = client_addr.sin_addr.s_addr;
 			args->conn_fd = conn_fd;
 
@@ -100,45 +110,57 @@ int main(int argc, char **argv)
 
 void *connection_handler(void *args)
 {
-	int size = 256;
+	const int max_read_size = 16;
 
-	struct connection_args *conn_args = (struct connection_args *) args;
+	connection_args *conn_args = (connection_args *) args;
 
 	char ipstr[16];
 	ipaddrtstr(conn_args->client_addr, ipstr);
 
 	printf("Connected to %s!\n", ipstr);
 
-	if (conn_args->conn_fd == -1)
+	while (1)
 	{
-		error("Socket accept error!");
+		// Recive type
+		packet_type type;
+
+		ssize_t res = recv(conn_args->conn_fd, &type, 1, 0);
+
+		if (res == 0)
+		{
+			printf("Disconnected from %s!\n", ipstr);
+
+			close(conn_args->conn_fd);
+			sem_post(&conn_sem);
+			return NULL;
+		}
+		else if (res == -1)
+		{
+			perror("Recv error");
+
+			close(conn_args->conn_fd);
+			sem_post(&conn_sem);
+			return NULL;
+		}
+
+		switch (type)
+		{
+		case LOGIN:
+			handle_login();
+			break;
+		case REGISTER:
+			break;
+		case SEARCH:
+			break;
+		case ADD_CONTACT:
+			break;
+		default:
+			printf("Recived malformed packet! Closing connection with %s...\n", ipstr);
+			close(conn_args->conn_fd);
+			sem_post(&conn_sem);
+			return NULL;
+		}
 	}
-
-	char *mess_buf = calloc(size + 1, sizeof(char));
-
-	if (mess_buf == NULL)
-	{
-		error("Buffer allocation error!");
-	}
-
-	while (recv(conn_args->conn_fd, NULL, 0, MSG_PEEK | MSG_TRUNC) != -1 &&
-		   read(conn_args->conn_fd, (void *) mess_buf, size) > 0)
-	{
-		// Add terminator incase client has not
-		mess_buf[size] = '\0';
-
-		printf("Recived: %s\n", mess_buf);
-
-		memset(mess_buf, 0, size + 1);
-	}
-
-	close(conn_args->conn_fd);
-
-	printf("Disconnected from %s!\n", ipstr);
-
-	free(mess_buf);
-
-	sem_post(&conn_sem);
 
 	return NULL;
 }

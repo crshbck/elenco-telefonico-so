@@ -3,6 +3,7 @@
 
 #include "config.h"
 #include <stddef.h>
+#include <stdint.h>
 
 typedef enum _login_status
 {
@@ -47,5 +48,13 @@ typedef enum _add_contact_status
 	ADD_CONTACT_UNAUTHORIZED,
 	ADD_CONTACT_SERVER_ERROR
 } add_contact_status;
+
+typedef enum __attribute__((packed)) _packet_type
+{
+	LOGIN,
+	REGISTER,
+	SEARCH,
+	ADD_CONTACT
+} packet_type;
 
 #endif
