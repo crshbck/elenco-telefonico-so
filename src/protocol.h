@@ -2,20 +2,28 @@
 #define PROTOCOL_H
 
 #include "config.h"
+#include <cstdint>
 #include <stddef.h>
+#include <stdint.h>
+
+typedef struct __attribute__((__packed__)) _packet_header_t
+{
+	char opcode;
+	uint16_t payload_size;
+} packet_header_t;
 
 typedef enum _login_status
 {
+	LOGIN_OK,
 	LOGIN_WRONG_CREDENTIALS,
-	LOGIN_SERVER_ERROR,
-	LOGIN_OK
+	LOGIN_SERVER_ERROR
 } login_status;
 
 typedef enum _signup_status
 {
+	SIGNUP_OK,
 	SIGNUP_USERNAME_TAKEN,
-	SIGNUP_SERVER_ERROR,
-	SIGNUP_OK
+	SIGNUP_SERVER_ERROR
 } signup_status;
 
 typedef enum _auth_level
@@ -47,5 +55,13 @@ typedef enum _add_contact_status
 	ADD_CONTACT_UNAUTHORIZED,
 	ADD_CONTACT_SERVER_ERROR
 } add_contact_status;
+
+typedef enum __attribute__((packed)) _packet_type
+{
+	LOGIN,
+	REGISTER,
+	ADD_CONTACT,
+	SEARCH
+} packet_type;
 
 #endif

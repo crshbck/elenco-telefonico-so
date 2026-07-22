@@ -1,0 +1,163 @@
+\documentclass[11pt, a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[italian]{babel}
+\usepackage{geometry}
+\geometry{top=2.5cm, bottom=2.5cm, left=2.5cm, right=2.5cm}
+
+\usepackage{float}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{booktabs} % Tabelle di qualità professionale
+\usepackage{listings} % Per formattare codice o messaggi del protocollo
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{bytefield}
+\usepackage{parskip}
+
+\usepackage{lipsum}
+
+% Configurazione estetica per i log o codice
+\lstset{
+	basicstyle=\ttfamily\small,
+	backgroundcolor=\color{gray!10},
+	frame=single,
+	breaklines=true
+}
+
+\title{\textbf{\Large Relazione di Progetto di Sistemi Operativi}\\ \huge Applicazione Elenco Telefonico con Socket TCP}
+\author{\textbf{Giacomo Abbruciati} - Matricola: 0356240}
+
+\begin{document}
+	
+	\maketitle
+	
+	\tableofcontents
+	\newpage
+	
+	\section{Introduzione, Specifiche e Scelte progettuali}
+	\lipsum[1][1]
+
+	\subsection{Specifiche del progetto}
+	\lipsum[1][1-4]
+	
+	\subsection{Scelte progettuali}
+	\lipsum[2]
+	
+	\section{Specifica del Protocollo}
+	\lipsum[1]
+	
+	\subsection{Struttura Header di Pacchetto}
+	
+	L'header di pacchetto contiene le informazioni relative alla natura del messaggio e alla lunghezza del relativo payload.\\	
+	
+	Il primo byte rappresenta l'\textit{Opcode} (\texttt{0x00}--\texttt{0x03}) della richiesta se il messaggio è in ingresso al server (\text{Client} $\rightarrow$ \text{Server}), oppure lo \textit{Status Code} (\texttt{0x80}--\texttt{0x99}) se il messaggio è in uscita dal server (\text{Server} $\rightarrow$ \text{Client}).
+	
+	I successivi due byte indicano la lunghezza del \textit{Payload}, ovvero il contenuto effettivo del messaggio.
+	
+	%TODO cambia range di status code
+	
+	\begin{figure}[htbp]
+		\centering
+		\begin{bytefield}[bitwidth=1.3em]{24}
+			\bitheader{0,7,8,23} \\
+			\bitbox{8}{Opcode / Status code} & \bitbox{16}{Payload Length}
+		\end{bytefield}
+		\caption{Struttura dell'Header di Pacchetto}
+	\end{figure}
+	
+	\subsection{Opcode di richiesta}
+
+	Il client può inviare comandi al server blablabla
+	
+	\begin{table}[htbp]
+		\centering
+		\begin{tabular}{llll}
+			\toprule
+			\textbf{Hex} & \textbf{Opcode} & \textbf{Parametri} & \textbf{Descrizione} \\
+			\midrule
+			\texttt{0x00} & \texttt{LOGIN} & \texttt{<username> <password\_hash>} & Effettua l'accesso\\
+			\texttt{0x01} &	\texttt{REGISTER} & \texttt{<username> <password>} & Registra un utente\\
+			\texttt{0x02} &	\texttt{INSERT} & \texttt{<name> <phone\_number>} & Inserisce un contatto\\
+			\texttt{0x03} &	\texttt{SEARCH} & \texttt{<name>} & Ricerca un contatto\\
+			\bottomrule
+		\end{tabular}
+		\caption{Lista di opcode disponibili}
+	\end{table}
+	
+	\subsubsection{Opcode \texttt{LOGIN} \& \texttt{REGISTER}}
+	
+	Gli \textit{Opcode} \texttt{LOGIN} e \texttt{REGISTER} individuano rispettivamente le operazioni di Accesso e Registrazione al servizio di elenco telefonico. Il \textit{Payload} è strutturato ponendo nei primi $\text{Payload Length} - 32$ byte l'username dell'utente e negli ultimi 32 byte l'hash della password effettuato dal client	.
+	
+	\begin{figure}[htbp]
+		\centering
+		\begin{bytefield}[bitwidth=1.1em]{24}
+			\wordbox{2}{Username (variabile -- $N$ byte)} \\
+			\wordbox{3}{Password Client Hash (32 Byte -- SHA-256)}
+		\end{bytefield}
+		\caption{Struttura del payload di una richiesta \texttt{LOGIN} o \texttt{REGISTER}.}
+		\label{fig:login_payload}
+	\end{figure}
+	
+	\subsection{Status code di risposta}
+	
+	\begin{table}[H] %cambia in htbp 
+	\centering
+		\begin{tabular}{lll}
+			\toprule
+			\textbf{Hex} & \textbf{Status} & \textbf{Descrizione} \\
+			\midrule
+			\texttt{0x80} & \texttt{OK} & Operazione completata con successo \\
+			\texttt{0x81} & \texttt{SERVER\_ERROR} & Errore server \\
+			\texttt{0x82} & \texttt{200 OK [dati]} & Operazione completata con successo \\
+			\texttt{200 OK [dati]} & \texttt{200 OK [dati]} & Operazione completata con successo \\
+			\bottomrule
+		\end{tabular}
+	\caption{Codici di stato restituiti dal Server}
+	\end{table}
+	
+	\section{Specifica del Server}
+	\subsection{Architettura Concorrente}
+	Il server è stato progettato per gestire più client contemporaneamente. Per ogni nuova connessione accettata sulla socket di ascolto (porta \texttt{8080}), viene creato un nuovo \textit{thread} dedicato alla gestione della sessione.
+	
+	\subsection{Struttura Dati e Sincronizzazione}
+	I dati dell'elenco telefonico sono mantenuti in memoria tramite una Mappa (Chiave: \texttt{Nome}, Valore: \texttt{Numero}).
+	Poiché la risorsa è condivisa tra più thread, gli accessi in scrittura (\texttt{ADD}, \texttt{DELETE}) sono protetti tramite un meccanismo di **Sezione Critica (Mutex)** per evitare \textit{race condition}.
+	
+	\section{Specifica del Client}
+	Il client è un'applicazione da riga di comando che:
+	\begin{enumerate}
+		\item Apre una socket TCP verso l'IP e la porta del server.
+		\item Mostra un menu o legge i comandi dell'utente da \texttt{stdin}.
+		\item Formatta la richiesta secondo il protocollo e la invia sulla socket.
+		\item Attende la risposta del server, ne fa il parsing e mostra il risultato all'utente.
+	\end{enumerate}
+	
+	\section{Esecuzione e Collaudo}
+	\subsection{Compilazione e Avvio}
+	\begin{lstlisting}[language=bash]
+		# Avvio del Server
+		$ ./server 8080
+		
+		# Avvio del Client
+		$ ./client 127.0.0.1 8080
+	\end{lstlisting}
+	
+	
+	\subsection{Esempio di Interazione}
+	Un tipico flusso di comunicazione tra Client (C) e Server (S):
+	\begin{lstlisting}
+		C: SEARCH Mario
+		S: 200 OK 3331234567
+		
+		C: SEARCH Giuseppe
+		S: 404 NOT_FOUND
+		
+		C: QUIT
+		S: 200 BYE
+	\end{lstlisting}
+	
+	\section{Conclusioni}
+	Il progetto ha permesso di verificare l'efficacia della gestione delle socket in ambiente di rete e la semplicità di definizione di un protocollo applicativo su misura per servire richieste concorrenti.
+	
+\end{document}
