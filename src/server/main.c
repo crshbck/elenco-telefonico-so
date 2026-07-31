@@ -1,10 +1,13 @@
 #include "../common/utils.h"
 #include "../protocol.h"
 #include "login.h"
+#include "sender.h"
 
 #include <netinet/in.h>
 #include <pthread.h>
 #include <semaphore.h>
+#include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -35,7 +38,6 @@ sem_t conn_sem;
 
 int main(int argc, char **argv)
 {
-	printf("Started server!\n");
 
 	if (sem_init(&conn_sem, 0, MAX_CONNECTIONS) == -1)
 	{
@@ -71,6 +73,8 @@ int main(int argc, char **argv)
 		error("Socket listen error!");
 	}
 
+	printf("Started server on port %d!\n", SERVER_PORT);
+
 	struct sockaddr_in client_addr = {0};
 	socklen_t client_addrlen = sizeof(client_addr);
 
@@ -83,7 +87,7 @@ int main(int argc, char **argv)
 			fprintf(stderr, "Socket accept error in thread!\n");
 			sem_post(&conn_sem);
 
-			return NULL;
+			return -1;
 		}
 
 		// Accept connection
@@ -110,8 +114,6 @@ int main(int argc, char **argv)
 
 void *connection_handler(void *args)
 {
-	const int max_read_size = 16;
-
 	connection_args *conn_args = (connection_args *) args;
 
 	char ipstr[16];
@@ -119,10 +121,60 @@ void *connection_handler(void *args)
 
 	printf("Connected to %s!\n", ipstr);
 
+	uint8_t start_seq;
+
+	ssize_t res = recv(conn_args->conn_fd, &start_seq, 1, 0);
+
+	if (res == 0)
+	{
+		printf("Disconnected from %s!\n", ipstr);
+
+		close(conn_args->conn_fd);
+		sem_post(&conn_sem);
+		return NULL;
+	}
+	else if (res == -1)
+	{
+		perror("Recv error");
+
+		close(conn_args->conn_fd);
+		sem_post(&conn_sem);
+		return NULL;
+	}
+	else if (start_seq != STARTING_SEQ)
+	{
+		printf("Recived malformed packet from %s, closing connection!\n", ipstr);
+
+		close(conn_args->conn_fd);
+		sem_post(&conn_sem);
+		return NULL;
+	}
+
+	user_t user = {0};
+
 	while (1)
 	{
+
+		/*
+		 * int byte_letti = 0;
+			while (byte_letti < payload_length) {
+		int n = recv(socket_fd, buffer + byte_letti, payload_length - byte_letti, 0);
+
+		if (n > 0) {
+			byte_letti += n; // Accumula i byte letti
+		} else if (n == 0) {
+			// IL CLIENT HA CHIUSO LA CONNESSIONE PREMATURAMENTE!
+			break;
+		} else {
+			// Errore della socket
+			break;
+		}
+			}
+		 */
 		packet_header_t header;
 		ssize_t res = recv(conn_args->conn_fd, &header, sizeof(packet_header_t), 0);
+
+		header.payload_size = ntohs(header.payload_size);
 
 		if (res == 0)
 		{
@@ -144,7 +196,7 @@ void *connection_handler(void *args)
 		switch (header.opcode)
 		{
 		case LOGIN:
-			handle_login(header);
+			handle_login(&header, &user, conn_args->conn_fd);
 			break;
 		case REGISTER:
 			break;
@@ -153,6 +205,7 @@ void *connection_handler(void *args)
 		case ADD_CONTACT:
 			break;
 		default:
+			// todo respond with proper status code instead of closing connection
 			printf("Recived malformed packet! Closing connection with %s...\n", ipstr);
 			close(conn_args->conn_fd);
 			sem_post(&conn_sem);

@@ -6,16 +6,15 @@ all: server client
 debug: server_debug client_debug
 
 server:
-	gcc src/server/*.c src/common/*.c -o server -lcrypto
+	gcc src/server/*.c src/common/*.c src/server/database/*.c -o server -lcrypto
 
 client:
 	gcc src/client/*.c src/common/*.c -o client -lcrypto
 
 server_debug:
-	gcc src/server/*.c src/common/*.c $(CFLAGSDEBUG) -o server
+	gcc src/server/*.c src/common/*.c src/server/database/*.c $(CFLAGSDEBUG) -o server
 
 client_debug:
 	gcc src/client/*.c src/common/*.c $(CFLAGSDEBUG) -o client
 
-# Rimosso server e client da PHONY per ripristinare il check dei timestamp
-.PHONY: all debug
+.PHONY: all debug client server
