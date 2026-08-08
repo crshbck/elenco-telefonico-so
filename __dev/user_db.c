@@ -1,4 +1,4 @@
-#include "database.h"
+#include "user_db.h"
 
 #include "../src/config.h"
 
@@ -7,6 +7,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/ipc.h>
+#include <sys/sem.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -15,18 +17,45 @@
  * ____________________________________________________________________________________________
  * | ACTIVE (1B) | USERNAME_LEN (1B) | USERNAME (variable) | PASSWORD (32B) | AUTH_LEVEL (1B) |
  * ____________________________________________________________________________________________
- *
  */
 
 int user_db_fd;
-int contact_db_fd;
 
-bool init_db()
+int semaphore;
+
+bool init_user_db()
 {
-	user_db_fd = open(USER_DB_FILENAME, O_RDWR | O_CREAT, 0640);
-	contact_db_fd = open(CONTACT_DB_FILENAME, O_RDWR | O_CREAT, 0640);
+	semaphore = semget(IPC_PRIVATE, 3, 0660);
 
-	if (user_db_fd == -1 || contact_db_fd == -1)
+	if (semaphore == -1)
+	{
+		return false;
+	}
+
+	// as per spec
+	union semun
+	{
+		int val;			   /* Value for SETVAL */
+		struct semid_ds *buf;  /* Buffer for IPC_STAT, IPC_SET */
+		unsigned short *array; /* Array for GETALL, SETALL */
+		struct seminfo *__buf; /* Buffer for IPC_INFO
+								  (Linux-specific) */
+	};
+
+	union semun args;
+	args.array = (unsigned short[]) {0, 0, 1};
+
+	// 0: SEM_READERS
+	// 1: SEM_WRITER_WAITING
+	// 2: MUTEX_WRITING
+	if (semctl(semaphore, 0, SETALL, args) == -1)
+	{
+		return false;
+	}
+
+	user_db_fd = open(USER_DB_FILENAME, O_RDWR | O_CREAT, 0640);
+
+	if (user_db_fd == -1)
 	{
 		return false;
 	}
@@ -34,7 +63,8 @@ bool init_db()
 	return true;
 }
 
-int check_credentials(const char *username, const char *password, auth_level_t *auth_level)
+int _unlocked_check_credentials(const char *username, const char *password,
+								auth_level_t *auth_level)
 {
 	if (lseek(user_db_fd, 0, SEEK_SET) == -1)
 	{
@@ -105,7 +135,33 @@ int check_credentials(const char *username, const char *password, auth_level_t *
 	return 0;
 }
 
-bool add_user(const user_t *user)
+int check_credentials(const char *username, const char *password, auth_level_t *auth_level)
+{
+
+	struct sembuf semops[2];
+	// Wait for SEM_WRITER_WAITING == 0
+	semops[0] = (struct sembuf) {.sem_num = 1, .sem_op = 0, .sem_flg = 0};
+	// SEM_READERS += 1
+	semops[1] = (struct sembuf) {.sem_num = 0, .sem_op = +1, .sem_flg = 0};
+
+	if (semop(semaphore, semops, 2) == -1)
+	{
+		return -1;
+	}
+
+	int status = _unlocked_check_credentials(username, password, auth_level);
+
+	// SEM_READERS -= 1
+	semops[0] = (struct sembuf) {.sem_num = 0, .sem_op = -1, .sem_flg = 0};
+	if (semop(semaphore, semops, 1) == -1)
+	{
+		return -1;
+	}
+
+	return status;
+}
+
+bool _unlocked_add_user(const user_t *user)
 {
 	if (lseek(user_db_fd, 0, SEEK_END) == -1)
 	{
@@ -147,4 +203,40 @@ bool add_user(const user_t *user)
 	}
 
 	return true;
+}
+
+bool add_user(const user_t *user)
+{
+	struct sembuf semops[2];
+	// SEM_WRITER_WAITING += 1
+	semops[0] = (struct sembuf) {.sem_num = 1, .sem_op = +1, .sem_flg = 0};
+
+	if (semop(semaphore, semops, 1) == -1)
+	{
+		return -1;
+	}
+
+	// MUTEX_WRITING -= 1
+	semops[0] = (struct sembuf) {.sem_num = 2, .sem_op = -1, .sem_flg = 0};
+	// Wait for SEM_READERS == 0
+	semops[1] = (struct sembuf) {.sem_num = 0, .sem_op = 0, .sem_flg = 0};
+
+	if (semop(semaphore, semops, 1) == -1)
+	{
+		return -1;
+	}
+
+	bool status = _unlocked_add_user(user);
+
+	// SEM_WRITERS_WAITING -= 1
+	semops[0] = (struct sembuf) {.sem_num = 1, .sem_op = -1, .sem_flg = 0};
+	// MUTEX_WRITING += 1
+	semops[1] = (struct sembuf) {.sem_num = 2, .sem_op = +1, .sem_flg = 0};
+
+	if (semop(semaphore, semops, 2) == -1)
+	{
+		return -1;
+	}
+
+	return status;
 }

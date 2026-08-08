@@ -1,11 +1,11 @@
-#include "database.h"
+#include "user_db.h"
 
 #include <assert.h>
 #include <stdio.h>
 
 int main()
 {
-	assert(init_db());
+	assert(init_user_db());
 
 	user_t user = {
 		.username = "Pippo", .password = "X123000000000000000000000000321X", .auth_level = ADMIN};
