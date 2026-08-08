@@ -16,10 +16,6 @@
 \usepackage{parskip}
 \usepackage{subcaption}
 \usepackage{pifont}
-\usepackage{lipsum}
-\usepackage{tikz}
-\usepackage{tikz}
-\usetikzlibrary{positioning} % <-- FONDAMENTALE per la sintassi "right=of"
 
 
 \newcommand{\cmark}{\ding{51}}
@@ -34,6 +30,7 @@
 
 \title{\textbf{\Large Relazione di Progetto di Sistemi Operativi}\\ \huge Applicazione Elenco Telefonico con Socket TCP}
 \author{\textbf{Giacomo Abbruciati} - Matricola: 0356240}
+\date{}
 
 \begin{document}
 	
@@ -52,9 +49,14 @@
 	La specifica richiede inoltre lo sviluppo di un'applicazione client in grado di interagire con il server per effettuare le operazioni richieste.
 	
 	\subsection{Scelte progettuali}
-	Per l'interazione tra il client ed il server si è scelto di sviluppare un protocollo la cui specifica è descritta nella sezione successiva.
+	
+	\subsubsection{Comunicazione Client $\longleftrightarrow$ Server}
+	
+	Per l'interazione tra il client ed il server si è scelto di sviluppare un protocollo applicativo ad-hoc la cui specifica è descritta nella sezione successiva.
 	
 	Il client ed il server scambiano messaggi tramite \textit{Socket TCP}: questo permette alle due applicazioni di risiedere su macchine diverse collocate in aree geografiche diverse.
+	
+	\subsubsection{Livelli di Autorizzazione}
 	
 	Poiché nella specifica viene richiesto che gli utenti che sono autorizzati ad inserire contatti non siano generalmente gli stessi autorizzati a ricercarli, si è optato per una struttura che prevede dei livelli di autorizzazione per la gestione delle operazioni effettuabili.
 	
@@ -79,6 +81,18 @@
 	
 	Come descritto nella Tabella \ref{tab:permessi_utente} un utente di tipo \textit{User} ha l'unica possibilità di ricercare contatti nell'elenco telefonico mentre per l'inserimento è necessario un livello di autorizzazione \textit{Admin}.
 	
+	\subsubsection{Strutture dati e Ricerca di Contatti}
+	
+	Per individuare gli utenti che possono accedere al sistema si è scelto \textit{Username} e \textit{Password}. Lo \textit{Username} ha un limite massimo di 32 caratteri.
+	
+	Per quanto riguarda la gestione della \textit{Password} questa dopo essere inserita dall'utente viene convertita nel suo digeset SHA-256 per garantire una dimensione fissa di 32 byte, prima di venire salvata nel database del server verrà comunque preventivamente hashata nuovamente.
+	
+	Per implementare la specifica richiesta si è scelto di assegnare ad ogni contatto presente nell'Elenco Telefonico nome e numero di telefono, questi sono entrambi rappresentati come stringhe limitate nella loro lunghezza rispettivamente a 128 e 20 caratteri.
+	
+	Per effettuare una ricerca all'interno del sistema il client invia al server una richiesta di ricerca contenente il numero massimo di contatti che si aspetta vengano ritornati ed il nome del contatto che si desidera trovare. Il server eseguirà una ricerca all'interno del database ritornando al richiedente tutti i contatti trovati utilizzando una ricerca per prefisso di tipo \textit{case-insensitive} sul campo nome.
+	
+	Poiché la dimensione del campo dell'header relativo alla lunghezza del \textit{Payload} è fissata a 2 byte, la quantità di dati relativi ai contatti restituiti dal server verrà troncata affinché non superi il limite massimo di $2^{16} - 1 = 65.535$ byte.
+	
 	\section{Specifica del Protocollo}
 	Il protocollo che si è deciso di sviluppare si appoggia sul protocollo di trasporto \textit{TCP} per la garanzia di consegna dei pacchetti.
 	
@@ -86,7 +100,7 @@
 	
 	\subsection{Struttura Header di Pacchetto}
 	
-	L'header di pacchetto contiene le informazioni relative alla natura del messaggio e alla lunghezza del relativo payload.
+	L'header di pacchetto contiene le informazioni relative alla natura del messaggio e alla lunghezza del relativo \textit{Payload}.
 	
 	Il primo byte rappresenta una sequenza di riconoscimento del pacchetto, per verificare che la provenienza della richiesta sia stata originata da un client adeguato, filtrando così messaggi errati causati ad esempio dalla connessione tramite \textit{HTTP} al server. Questo byte è stato fissato a \texttt{0xA5}.
 	
@@ -107,7 +121,7 @@
 
 	Una richiesta ha come primo byte informativo l'\textit{Opcode}: questo definisce il tipo di operazione che si intende eseguire, nella Tabella \ref{tab:opcodes} sono mostrate le operazioni disponibili.
 	
-	\begin{table}[htbp]
+	\begin{table}[H]
 		\centering
 		\begin{tabular}{llll}
 			\toprule
@@ -130,11 +144,10 @@
 	
 	\begin{figure}[htbp]
 		\centering
-		\begin{bytefield}[bitwidth=1.1em]{24}
-			\wordbox{2}{Username (variabile -- $N$ byte)} \\
-			\wordbox{3}{Password Client Hash (32 Byte -- SHA-256)}
+		\begin{bytefield}[bitwidth=1.3em]{38}
+			\bitbox{12}{Username} & \bitbox{16}{Password (32 Byte)}
 		\end{bytefield}
-		\caption{Struttura del payload di una richiesta \texttt{LOGIN} o \texttt{REGISTER}.}
+		\caption{Struttura del \textit{Payload} di una richiesta \texttt{LOGIN} o \texttt{REGISTER}}
 	\end{figure}
 	
 	A seguito di una richiesta di tipo \texttt{LOGIN}, se l'autenticazione avrà successo, il client aspetterà una risposta per cui il primo e unico byte del \textit{Payload} conterrà il livello di autorizzazione dell'utente che ha effettuato l'accesso. Nel caso l'autenticazione non abbia successo lo \textit{Status Code} sarà \texttt{INVALID\_CREDENTIALS} il \textit{Payload} della risposta avrà dimensione nulla.
@@ -148,7 +161,7 @@
 				\bitheader{0,7,8,23,24,31} \\
 				\bitbox{8}{Status Code (\texttt{OK})} & \bitbox{16}{Payload Length (\texttt{0x0001})} & \bitbox{8}{Auth Level}
 			\end{bytefield}
-			\caption{Struttura pacchetto di risposta al \texttt{LOGIN} con esito positivo.}
+			\caption{Struttura del \textit{Payload} di risposta di una richiesta \texttt{LOGIN} con esito positivo.}
 			
 			\vspace{0.4cm}
 			
@@ -156,34 +169,39 @@
 				\bitheader{0,7,8,23} \\
 				\bitbox{8}{Status Code} & \bitbox{16}{Payload Length (\texttt{0x0000})}
 			\end{bytefield}
-			\caption{Struttura pacchetto di risposta alla \texttt{REGISTER} o ad una \texttt{LOGIN} senza successo.}
+			\caption{Struttura del \textit{Payload} di risposta di una richiesta \texttt{REGISTER} o di una richiesta \texttt{LOGIN} senza successo.}
 		\end{subcaptiongroup}
 	\end{figure}
 	
-	\subsection{Opcode \texttt{INSERT}}
+	\subsubsection{Opcode \texttt{INSERT}}
 	
 	L'\textit{Opcode} \texttt{INSERT} individua l'operazione di inserimento di un nuovo contatto nell'Elenco telefonico.
 	Il primo byte del \textit{Payload} di questo tipo di pacchetto individua la lunghezza in byte del nome del contatto da inserire, i seguenti $N$ byte saranno quindi costituiti dal nome di questo mentre i restanti byte saranno attribuiti al numero di telefono.
 	
 	\begin{figure}[H]
 		\centering
-		\begin{bytefield}[bitwidth=1.0em]{32}
-			\wordbox{1}{Name Length (1 Byte)} \\
-			\wordbox{2}{Name} \\
-			\wordbox{2}{Phone Number} 
+		\begin{bytefield}[bitwidth=1.0em]{36}
+			\bitheader{0,7,8} \\
+			\bitbox{8}{Name Length} & \bitbox{12}{Name} & \bitbox{16}{Phone Number}
 		\end{bytefield}
 			
-		\caption{Struttura del payload di una richiesta \texttt{INSERT}.}
+		\caption{Struttura del \textit{Payload} di una richiesta \texttt{INSERT}.}
 	\end{figure}
 	
 	Una richiesta di tipo \texttt{INSERT} che ha successo sarà seguita da una risposta con \textit{Status code} \texttt{OK}. Se l'utente non dovesse essere autorizzato ad eseguire questa operazione la risposta avrà uno \textit{Status Code} \texttt{UNAUTHORIZED}. In entrambi i casi il \textit{Payload} sarà vuoto.
 	
-	\subsection{Opcode \texttt{DELETE}}
+	\subsubsection{Opcode \texttt{DELETE}}
 	
 	L'\textit{Opcode} \texttt{DELETE} individua l'operazione di rimozione di un contatto dall'Elenco telefonico.
 	Il \textit{Payload} di questo tipo di pacchetto contiene unicamente il \textit{Name} del contatto che si intende eliminare: questo deve coincidere esattamente con il \textit{Name} del contatto target.
+
+	Una richiesta di tipo \texttt{DELETE} che ha successo è seguita da una risposta con \textit{Status code} \texttt{OK}. Se l'utente non dovesse essere autorizzato ad eseguire questa operazione la risposta avrà uno \textit{Status Code} \texttt{UNAUTHORIZED}. Se invece il contatto non dovesse esistere ci si aspetterà una risposta il cui \textit{Status Code} sarà \texttt{NOT\_FOUND}. In tutti i casi il \textit{Payload} sarà vuoto.
 	
-	Una richiesta di tipo \texttt{DELETE} che ha successo sarà seguita da una risposta con \textit{Status code} \texttt{OK}. Se l'utente non dovesse essere autorizzato ad eseguire questa operazione la risposta avrà uno \textit{Status Code} \texttt{UNAUTHORIZED}. Se invece il contatto non dovesse esistere ci si aspetterà una risposta il cui \textit{Status Code} sarà \texttt{NOT\_FOUND}. In tutti i casi il \textit{Payload} sarà vuoto.
+	\subsubsection{Opcode \texttt{SEARCH}}
+
+	L'\textit{Opcode} \texttt{SEARCH} individua l'operazione di ricerca di un contatto all'interno dell'Elenco Telefonico. Il \textit{Payload} di una richiesta di questo tipo contiene il nome del contatto che si desidera trovare.
+	
+	Una richiesta di tipo \textit{SEARCH} che ha successo è seguita da una risposta con \textit{Status code} \textit{OK}, il \textit{Payload} TODO
 	
 	\subsection{Status code di risposta}
 	
@@ -219,49 +237,59 @@
 	
 	\subsection{Base di dati e sincronizzazione}
 	Il salvataggio dei dati (credenziali degli utenti e contatti) avviene rispettivamente su due file su disco.
-	Poiché le operazioni su questi possono avvenire concorrentemente, viene utilizzato un read-write lock (\texttt{pthread\_rwlock\_t}): questo permette a più thread di leggere concorrentemente i file, mettendo in attesa eventuali scrittori che potranno effettuare le operazioni desiderate solo al termine di tutte le letture.
+
+	Poiché il server gestisce le richieste in modalità concorrente, ciò espone il database ad un problema di sincronizzazione: questo viene risolto tramite l'ausilio di una logica di gestione semaforica dedicata.
 	
-	Quest'architettura espone però al rischio di starvation da parte di scrittori eventuali che potrebbero non ottenere mai il loro turno, per questo è stata utilizzata l'opzione 
-	\begin{center}
-		\texttt{PTHREAD\_RWLOCK\_PREFER\_WRITER\_NONRECURSIVE\_NP}
-	\end{center}
-	Tale attributo fornisce priorità ad una scrittura rispetto ad una lettura, bloccando l'acquisizione del lock da parte di un lettore nel caso in cui una richiesta di scrittura sia pendente.
+	L'obiettivo di questa gestione è di permettere a più lettori di leggere concorrentemente il file di database, impedendo agli scrittori di scrivere se ci sono lettori attivi; poiché questa implementazione potrebbe provocare la starvation degli scrittori, il meccanismo implementato prevede una priorità degli scrittori sui lettori, bloccando questi ultimi fino a che le scritture precedenti non siano state completate.
 	
-	Va osservato però che una scrittura è statisticamente comunque meno frequente di una lettura, utilizzando questa opzione si accetta quindi un possibile ritardo da parte di un lettore, eliminando però del tutto l'eventualità di starvation per uno scrittore.
+	L'implementazione prevede quindi l'utilizzo di tre semafori SYSTEM V per permettere l'atomicità tra più operazioni semaforiche:
+	
+	\begin{itemize}
+		\item \texttt{SEM\_READERS}: semaforo per i lettori attivi, inizializzato a 0
+		\item \texttt{SEM\_WRITERS\_WAITING}: semaforo per gli scrittori in attesa di scrittura, inizializzato a 0
+		\item \texttt{MUTEX\_WRITING}: mutex per permettere solo ad uno scrittore di scrivere, inizializzato ad 1
+	\end{itemize}
+	
+	Il lettore si muoverà secondo questo schema:
+	
+	\begin{enumerate}
+		\item Atomicamente attendi \texttt{SEM\_WRITERS\_WAITING == 0} e incrementa \texttt{SEM\_READERS += 1}
+		\item Leggi
+		\item Decrementa \texttt{SEM\_READERS -= 1}
+	\end{enumerate}
+	
+	Lo scrittore si muoverà secondo questo schema:
+	
+	\begin{enumerate}
+		\item Incrementa \texttt{SEM\_WRITERS\_WAITING += 1}
+		\item Prendi il mutex \texttt{MUTEX\_WRITING}
+		\item Attendi \texttt{SEM\_READERS == 0}
+		\item Scrivi
+		\item Decrementa \texttt{SEM\_WRITERS\_WAITING -= 1}
+		\item Rilascia il mutex \texttt{MUTEX\_WRITING}
+	\end{enumerate}
 	
 	\subsection{Elevazione dei permessi}
 	
 	\section{Specifica del Client}
-	Il client è un'applicazione da riga di comando che:
-	\begin{enumerate}
-		\item Apre una socket TCP verso l'IP e la porta del server.
-		\item Mostra un menu o legge i comandi dell'utente da \texttt{stdin}.
-		\item Formatta la richiesta secondo il protocollo e la invia sulla socket.
-		\item Attende la risposta del server, ne fa il parsing e mostra il risultato all'utente.
-	\end{enumerate}
 	
-	\section{Esecuzione e Collaudo}
-	\subsection{Compilazione e Avvio}
+	Il client è un'applicazione da riga di comando che permette all'utente la connessione e l'interrogazione del server.
+	
+	All'avvio viene instaurata una connessione al server tramite \textit{Socket TCP}, mostrando all'utente una serie di menù che permettono l'interazione con il server.
+	
+	\section{Compilazione e Avvio}
 	\begin{lstlisting}[language=bash]
+		# Compilazione del Server
+		$ make server
+		
+		# Compilazione del Client
+		$ make client
+		
 		# Avvio del Server
-		$ ./server 8080
+		$ ./server 5050
 		
 		# Avvio del Client
-		$ ./client 127.0.0.1 8080
-	\end{lstlisting}
-	
-	
-	\subsection{Esempio di Interazione}
-	Un tipico flusso di comunicazione tra Client (C) e Server (S):
-	\begin{lstlisting}
-		C: SEARCH Mario
-		S: 200 OK 3331234567
-		
-		C: SEARCH Giuseppe
-		S: 404 NOT_FOUND
-		
-		C: QUIT
-		S: 200 BYE
+		$ ./client 127.0.0.1 5050
 	\end{lstlisting}
 	
 	\section{Conclusioni}
