@@ -16,7 +16,8 @@
 \usepackage{parskip}
 \usepackage{subcaption}
 \usepackage{pifont}
-
+\usepackage{tikz}
+\usetikzlibrary{positioning, calc}
 
 \newcommand{\cmark}{\ding{51}}
 \newcommand{\xmark}{\ding{55}}
@@ -27,6 +28,7 @@
 	frame=single,
 	breaklines=true
 }
+
 
 \title{\textbf{\Large Relazione di Progetto di Sistemi Operativi}\\ \huge Applicazione Elenco Telefonico con Socket TCP}
 \author{\textbf{Giacomo Abbruciati} - Matricola: 0356240}
@@ -201,7 +203,33 @@
 
 	L'\textit{Opcode} \texttt{SEARCH} individua l'operazione di ricerca di un contatto all'interno dell'Elenco Telefonico. Il \textit{Payload} di una richiesta di questo tipo contiene il nome del contatto che si desidera trovare.
 	
-	Una richiesta di tipo \textit{SEARCH} che ha successo è seguita da una risposta con \textit{Status code} \textit{OK}, il \textit{Payload} TODO
+	Una richiesta di tipo \textit{SEARCH} che ha successo è seguita da una risposta con \textit{Status code} \textit{OK}, il \textit{Payload Length} di una risposta ad una richiesta di questo tipo non rappresenterà la lunghezza in byte di questa bensì il numero di contatti ritornati.
+	
+	Il \textit{Payload} di una risposta di tipo \texttt{SEARCH} è costituito da contatti serializzati sequenzialmente.
+
+	\begin{figure}[H]
+		\centering
+		\begin{bytefield}[bitwidth=0.8em,bitheight=2.8em]{52}
+			\bitheader{0,7,8,15,16} \\
+			\bitbox{8}{\shortstack{Opcode\\\texttt{(0x04)}}} & \bitbox{8}{Result Count} & \bitbox{12}{Contact 1} & \bitbox{12}{...} & \bitbox{12}{Contact N}
+		\end{bytefield}
+		
+		\caption{Struttura di una risposta \texttt{SEARCH}.}
+	\end{figure}
+	
+	Ciascun contatto è caratterizzato da un \textit{Header} composto da due byte che rappresenteranno rispettivamente la lunghezza del nome e la lunghezza del numero di telefono; a questi due byte seguiranno poi il nome ed il recapito telefonico.
+	
+
+	
+	\begin{figure}[H]
+		\centering
+		\begin{bytefield}[bitwidth=1.0em, bitheight=2.8em]{48}
+			\bitheader{0,7,8,15,16} \\
+			\bitbox{8}{Name Length} & \bitbox{8}{\shortstack{Phone Number\\Length}} & \bitbox{12}{Name} & \bitbox{14}{Phone Number}
+		\end{bytefield}
+		
+		\caption{Struttura di un contatto nel \textit{Payload} di una risposta \texttt{SEARCH}.}
+	\end{figure}
 	
 	\subsection{Status code di risposta}
 	
@@ -235,8 +263,37 @@
 	
 	Nel caso in cui il client inoltri un'ulteriore richiesta di \texttt{LOGIN} l'autenticazione se di successo cambierà l'identità del client.
 	
-	\subsection{Base di dati e sincronizzazione}
+	\subsection{Base di dati}
 	Il salvataggio dei dati (credenziali degli utenti e contatti) avviene rispettivamente su due file su disco.
+
+	Si è scelto di organizzare i record sequenzialmente. Per quanto riguarda il database dei contatti, la rimozione di un record espone il database ad un problema di frammentazione esterna; per ovviare a ciò in ogni record è stato inserito un byte, denominato \texttt{ACTIVE} ed impostato di default ad \texttt{1}: questo indica se il record è attivo o è stato eliminato.
+	
+	Quando si effettua un inserimento si scansiona linearmente il database: se un record eliminato (\texttt{ACTIVE == 0}) viene trovato e questo ha la stessa lunghezza del record che si vuole inserire, il nuovo contatto lo sovrascriverà. In caso contrario questo verrà inserito alla fine del file. \\
+	
+	\begin{figure}[H]
+		\centering
+		\begin{bytefield}[bitwidth=1.0em, bitheight=2.8em]{43}
+			\bitheader{0,7,8,15,16,23,24} \\
+			\bitbox{8}{Active} &
+			\bitbox{8}{\shortstack{Name\\Length}} &
+			\bitbox{8}{\shortstack{Phone Number\\Length}} &
+			\bitbox{9}{Name} &
+			\bitbox{10}{Number}
+		\end{bytefield}
+		\caption{Struttura del record di un contatto.}
+	\end{figure}
+	
+	\begin{figure}[H]
+		\centering
+		\begin{bytefield}[bitwidth=0.75em, bitheight=2.8em]{58}
+			\bitheader{0,7,8,15,16,47,48} \\
+			\bitbox{8}{\shortstack{Username\\Length}} &\bitbox{8}{Auth Level} & \bitbox{32}{Password} & \bitbox{10}{Username}
+		\end{bytefield}
+		
+		\caption{Struttura del record di un utente.}
+	\end{figure}
+
+	\subsection{Sincronizzazione}
 
 	Poiché il server gestisce le richieste in modalità concorrente, ciò espone il database ad un problema di sincronizzazione: questo viene risolto tramite l'ausilio di una logica di gestione semaforica dedicata.
 	
@@ -291,8 +348,5 @@
 		# Avvio del Client
 		$ ./client 127.0.0.1 5050
 	\end{lstlisting}
-	
-	\section{Conclusioni}
-	Il progetto ha permesso di verificare l'efficacia della gestione delle socket in ambiente di rete e la semplicità di definizione di un protocollo applicativo su misura per servire richieste concorrenti.
 	
 \end{document}

@@ -5,3 +5,5 @@ CompileFlags:
         - "-isystem"
         - "\\\\wsl.localhost\\Ubuntu-22.04\\usr\\include\\x86_64-linux-gnu"
         - "-m64"
+Documentation:
+  CommentFormat: Doxygen

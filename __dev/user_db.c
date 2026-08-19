@@ -1,11 +1,12 @@
 #include "user_db.h"
+#include "sync.h"
 
 #include "../src/config.h"
+#include "utils.h"
 
 #include <fcntl.h>
 #include <stdbool.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include <sys/ipc.h>
 #include <sys/sem.h>
@@ -14,41 +15,18 @@
 #include <unistd.h>
 
 /*
- * ____________________________________________________________________________________________
- * | ACTIVE (1B) | USERNAME_LEN (1B) | USERNAME (variable) | PASSWORD (32B) | AUTH_LEVEL (1B) |
- * ____________________________________________________________________________________________
+ * ______________________________________________________________________________
+ * | USERNAME_LEN (1B) | AUTH_LEVEL (1B) | PASSWORD (32B) | USERNAME (variable) |
+ * ______________________________________________________________________________
  */
 
-int user_db_fd;
+static int user_db_fd = -1;
 
-int semaphore;
+static int semaphore;
 
 bool init_user_db()
 {
-	semaphore = semget(IPC_PRIVATE, 3, 0660);
-
-	if (semaphore == -1)
-	{
-		return false;
-	}
-
-	// as per spec
-	union semun
-	{
-		int val;			   /* Value for SETVAL */
-		struct semid_ds *buf;  /* Buffer for IPC_STAT, IPC_SET */
-		unsigned short *array; /* Array for GETALL, SETALL */
-		struct seminfo *__buf; /* Buffer for IPC_INFO
-								  (Linux-specific) */
-	};
-
-	union semun args;
-	args.array = (unsigned short[]) {0, 0, 1};
-
-	// 0: SEM_READERS
-	// 1: SEM_WRITER_WAITING
-	// 2: MUTEX_WRITING
-	if (semctl(semaphore, 0, SETALL, args) == -1)
+	if (!rwlock_init(&semaphore))
 	{
 		return false;
 	}
@@ -57,27 +35,44 @@ bool init_user_db()
 
 	if (user_db_fd == -1)
 	{
+		rwlock_destroy(&semaphore);
+
 		return false;
 	}
 
 	return true;
 }
 
-int _unlocked_check_credentials(const char *username, const char *password,
-								auth_level_t *auth_level)
+bool close_user_db()
 {
-	if (lseek(user_db_fd, 0, SEEK_SET) == -1)
+
+	if (close(user_db_fd) == -1)
 	{
-		return -1;
+		rwlock_destroy(&semaphore);
+		return false;
 	}
 
-	unsigned char header[2];
+	user_db_fd = -1;
+
+	if (rwlock_destroy(&semaphore) == -1)
+	{
+		return false;
+	}
+
+	return true;
+}
+
+static int _unlocked_check_credentials(const char *username, const char *password,
+									   auth_level_t *auth_level)
+{
+	off_t offset = 0;
+
+	unsigned char header;
 	ssize_t bytes_read;
 
 	while (1)
 	{
-		// TODO: iterate read
-		bytes_read = read(user_db_fd, header, 2);
+		bytes_read = pread_exact(user_db_fd, &header, 1, offset);
 
 		if (bytes_read == 0)
 		{
@@ -85,48 +80,46 @@ int _unlocked_check_credentials(const char *username, const char *password,
 			break;
 		}
 
+		offset += 1;
+
 		if (bytes_read == -1)
 		{
 			// error
 			return -1;
 		}
 
-		if (bytes_read < 2)
-		{
-			// corrupted file
-			return -2;
-		}
+		int record_size = 1 + 32 + header;
 
-		if (header[0] == 0 || header[1] != strlen(username))
+		if (header != strlen(username))
 		{
-			// skip username + password + auth level
-			if (lseek(user_db_fd, header[1] + 32 + 1, SEEK_CUR) == -1)
-			{
-				return -1;
-			}
+			// skip auth level + password + username
+			offset += record_size;
 			continue;
 		}
 
-		// username + password (fixed) + auth level
-		unsigned char *buffer = malloc(sizeof(unsigned char) * (header[1] + 32 + 1));
-		// TODO: iterate read
-		bytes_read = read(user_db_fd, buffer, sizeof(buffer));
+		// auth level + password (fixed) + username
+		unsigned char buffer[record_size];
+
+		bytes_read = pread_exact(user_db_fd, buffer, record_size, offset);
 
 		if (bytes_read == 0)
 		{
 			// EOF
 			break;
 		}
+
+		offset += record_size;
+
 		if (bytes_read == -1)
 		{
 			// error
 			return -1;
 		}
 
-		if (memcmp(&buffer[0], username, strlen(username)) == 0 &&
-			memcmp(&buffer[header[1]], password, 32) == 0)
+		if (memcmp(&buffer[1 + 32], username, strlen(username)) == 0 &&
+			memcmp(&buffer[1], password, 32) == 0)
 		{
-			*auth_level = buffer[sizeof(buffer) - 1];
+			*auth_level = buffer[0];
 
 			return 1;
 		}
@@ -138,22 +131,14 @@ int _unlocked_check_credentials(const char *username, const char *password,
 int check_credentials(const char *username, const char *password, auth_level_t *auth_level)
 {
 
-	struct sembuf semops[2];
-	// Wait for SEM_WRITER_WAITING == 0
-	semops[0] = (struct sembuf) {.sem_num = 1, .sem_op = 0, .sem_flg = 0};
-	// SEM_READERS += 1
-	semops[1] = (struct sembuf) {.sem_num = 0, .sem_op = +1, .sem_flg = 0};
-
-	if (semop(semaphore, semops, 2) == -1)
+	if (!rwlock_get_reader(&semaphore))
 	{
 		return -1;
 	}
 
 	int status = _unlocked_check_credentials(username, password, auth_level);
 
-	// SEM_READERS -= 1
-	semops[0] = (struct sembuf) {.sem_num = 0, .sem_op = -1, .sem_flg = 0};
-	if (semop(semaphore, semops, 1) == -1)
+	if (!rwlock_release_reader(&semaphore))
 	{
 		return -1;
 	}
@@ -161,79 +146,53 @@ int check_credentials(const char *username, const char *password, auth_level_t *
 	return status;
 }
 
-bool _unlocked_add_user(const user_t *user)
+static int _unlocked_add_user(const user_t *user)
 {
-	if (lseek(user_db_fd, 0, SEEK_END) == -1)
-	{
-		return false;
-	}
+	int record_size = 1 + strlen(user->username) + 32 + 1;
 
-	int record_size = 1 + 1 + strlen(user->username) + 32 + 1;
-
-	unsigned char *buffer = malloc(sizeof(char) * record_size);
-
-	// Active
-	buffer[0] = 1;
+	unsigned char buffer[record_size];
 
 	// Username length
-	buffer[1] = strlen(user->username);
-
-	// Username
-	memcpy(&buffer[2], user->username, strlen(user->username));
-
-	// Password
-	memcpy(&buffer[strlen(user->username) + 2], user->password, 32);
+	buffer[0] = strlen(user->username);
 
 	// Auth level
-	buffer[record_size - 1] = user->auth_level;
+	buffer[1] = user->auth_level;
 
-	ssize_t bytes_written = 0, just_written = 0;
+	// Password
+	memcpy(&buffer[2], user->password, 32);
 
-	while (bytes_written < record_size)
+	// Username
+	memcpy(&buffer[1 + 1 + 32], user->username, strlen(user->username));
+
+	ssize_t bytes_written = 0;
+
+	off_t offset = lseek(user_db_fd, 0, SEEK_END);
+
+	if (offset == -1)
 	{
-		just_written = write(user_db_fd, buffer + bytes_written, record_size - bytes_written);
-
-		if (just_written <= 0)
-		{
-			// Error
-			return false;
-		}
-
-		bytes_written += just_written;
+		return -1;
 	}
 
-	return true;
+	bytes_written = pwrite_exact(user_db_fd, buffer + bytes_written, record_size, offset);
+
+	if (bytes_written < record_size)
+	{
+		return -1;
+	}
+
+	return 0;
 }
 
-bool add_user(const user_t *user)
+int add_user(const user_t *user)
 {
-	struct sembuf semops[2];
-	// SEM_WRITER_WAITING += 1
-	semops[0] = (struct sembuf) {.sem_num = 1, .sem_op = +1, .sem_flg = 0};
-
-	if (semop(semaphore, semops, 1) == -1)
+	if (!rwlock_get_writer(&semaphore))
 	{
 		return -1;
 	}
 
-	// MUTEX_WRITING -= 1
-	semops[0] = (struct sembuf) {.sem_num = 2, .sem_op = -1, .sem_flg = 0};
-	// Wait for SEM_READERS == 0
-	semops[1] = (struct sembuf) {.sem_num = 0, .sem_op = 0, .sem_flg = 0};
+	int status = _unlocked_add_user(user);
 
-	if (semop(semaphore, semops, 1) == -1)
-	{
-		return -1;
-	}
-
-	bool status = _unlocked_add_user(user);
-
-	// SEM_WRITERS_WAITING -= 1
-	semops[0] = (struct sembuf) {.sem_num = 1, .sem_op = -1, .sem_flg = 0};
-	// MUTEX_WRITING += 1
-	semops[1] = (struct sembuf) {.sem_num = 2, .sem_op = +1, .sem_flg = 0};
-
-	if (semop(semaphore, semops, 2) == -1)
+	if (!rwlock_release_writer(&semaphore))
 	{
 		return -1;
 	}
