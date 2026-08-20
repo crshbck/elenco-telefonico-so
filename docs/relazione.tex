@@ -201,7 +201,17 @@
 	
 	\subsubsection{Opcode \texttt{SEARCH}}
 
-	L'\textit{Opcode} \texttt{SEARCH} individua l'operazione di ricerca di un contatto all'interno dell'Elenco Telefonico. Il \textit{Payload} di una richiesta di questo tipo contiene il nome del contatto che si desidera trovare.
+	L'\textit{Opcode} \texttt{SEARCH} individua l'operazione di ricerca di un contatto all'interno dell'Elenco Telefonico. Il primo byte del \textit{Payload} di una richiesta di questo tipo contiene il limite massimo di contatti che il client desidera siano ritornati, i restanti byte rappresentano il nome del contatto che si desidera trovare.
+	
+	\begin{figure}[H]
+		\centering
+		\begin{bytefield}[bitwidth=0.8em]{24}
+			\bitheader{0,7,8} \\
+			\bitbox{8}{Limit} & \bitbox{16}{Name}
+		\end{bytefield}
+		
+		\caption{Struttura del \textit{Payload} di una richiesta \texttt{SEARCH}.}
+	\end{figure}
 	
 	Una richiesta di tipo \textit{SEARCH} che ha successo è seguita da una risposta con \textit{Status code} \textit{OK}, il \textit{Payload Length} di una risposta ad una richiesta di questo tipo non rappresenterà la lunghezza in byte di questa bensì il numero di contatti ritornati.
 	

@@ -4,6 +4,7 @@
 
 #include <fcntl.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <sys/ipc.h>
 #include <sys/sem.h>
 #include <sys/stat.h>
@@ -117,8 +118,9 @@ int rwlock_destroy(int *semaphore)
 {
 	if (*semaphore != -1)
 	{
+		int status = semctl(*semaphore, 0, IPC_RMID);
 		*semaphore = -1;
-		return semctl(*semaphore, 0, IPC_RMID);
+		return status;
 	}
 
 	return -1;

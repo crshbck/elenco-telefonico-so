@@ -4,6 +4,7 @@
 #include "sync.h"
 #include "utils.h"
 
+#include <ctype.h>
 #include <fcntl.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -222,9 +223,104 @@ static int _unlocked_delete_contact(const char *name, uint8_t name_length)
 	}
 }
 
-static int _unlocked_search_contact(const char *query, size_t query_length, int limit, void *buf,
-									size_t *match_count)
+int memcmpcaseins(const char *s1, const char *s2, size_t size)
 {
+	for (size_t i = 0; i < size; i++)
+	{
+		char c1 = tolower(s1[i]);
+		char c2 = tolower(s2[i]);
+
+		if (c1 != c2)
+		{
+			return c1 - c2;
+		}
+	}
+	return 0;
+}
+
+static int _unlocked_search_contact(const char *query, size_t query_length, uint8_t limit,
+									char ***buf, size_t *match_count)
+{
+	off_t offset = 0;
+
+	*buf = malloc(sizeof(char *) * limit);
+	*match_count = 0;
+
+	while (1)
+	{
+		char header[3];
+		ssize_t bytes_read = pread_exact(contact_db_fd, header, 3, offset);
+
+		offset += 3;
+
+		if (bytes_read == -1)
+		{
+			return -1;
+		}
+
+		if (bytes_read == 0)
+		{
+			// EOF
+			return 0;
+		}
+
+		if (header[0] == 1 && header[1] >= query_length)
+		{
+			char *record = malloc(sizeof(char) * (header[1] + header[2]));
+
+			bytes_read = pread_exact(contact_db_fd, record, header[1], offset);
+
+			if (bytes_read == -1)
+			{
+				// i/o error
+				return -1;
+			}
+
+			if (bytes_read < header[1])
+			{
+				// corrupted database
+				return -2;
+			}
+
+			offset += header[1];
+
+			if (memcmpcaseins(record, query, query_length) == 0)
+			{
+				// add phone number
+				bytes_read = pread_exact(contact_db_fd, record + header[1], header[2], offset);
+
+				if (bytes_read == -1)
+				{
+					// i/o error
+					return -1;
+				}
+
+				if (bytes_read < header[2])
+				{
+					// corrupted database
+					return -2;
+				}
+
+				*buf[*match_count] = record;
+
+				// ero qui che combattevo con un modo per scrivere nel buffer quando hai trovato i
+				// contatti, glhf
+				++*match_count;
+
+				if (*match_count == limit)
+				{
+					return 0;
+				}
+			}
+
+			offset += header[2];
+		}
+		else
+		{
+			// just skip the rest of the record
+			offset += header[1] + header[2];
+		}
+	}
 }
 
 int add_contact(const char *name, const char *phone_number, uint8_t name_length,
@@ -262,7 +358,7 @@ int delete_contact(const char *name, uint8_t name_length)
 	return status;
 }
 
-int search_contact(const char *query, size_t query_length, int limit, void *buf,
+int search_contact(const char *query, size_t query_length, uint8_t limit, char ***buf,
 				   size_t *match_count)
 {
 	if (!rwlock_get_reader(&semaphore))

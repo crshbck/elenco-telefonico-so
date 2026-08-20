@@ -2,6 +2,7 @@
 #define CONTACT_DB_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 bool init_contact_db();
@@ -27,7 +28,7 @@ int delete_contact(const char *name, uint8_t name_length);
 /// @retval  1               Success
 /// @retval -1               I/O error
 /// @retval -2               Corrupted database
-int search_contact(const char *query, size_t query_length, int limit, void *buf,
+int search_contact(const char *query, size_t query_length, uint8_t limit, char ***buf,
 				   size_t *match_count);
 
 #endif

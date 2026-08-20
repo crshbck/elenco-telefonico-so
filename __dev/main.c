@@ -26,9 +26,9 @@ int main()
 
 	assert(init_contact_db());
 
-	char *name = "Mario Bossi";
-	char *phone_number = "3K12333321";
-	assert(add_contact(name, phone_number, strlen(name), strlen(phone_number)));
+	char *name = "Mario Rossi";
+	char *phone_number = "3012333321";
+	// assert(add_contact(name, phone_number, strlen(name), strlen(phone_number)));
 
 	char *name1 = "Giuseppe Bianchi";
 	char *phone_number1 = "3112333321";
@@ -37,6 +37,21 @@ int main()
 	char *name2 = "Francesco Quaglia";
 	char *phone_number2 = "3212333321";
 	// assert(add_contact(name2, phone_number2, strlen(name2), strlen(phone_number2)));
+
+	char *name3 = "Francesco Totti";
+	char *phone_number3 = "3101010101";
+	// assert(add_contact(name3, phone_number3, strlen(name3), strlen(phone_number3)));
+
+	char *query = "francesco";
+
+	char **buf;
+	size_t match_count;
+
+	printf("status: %d\n", search_contact(query, strlen(query), 100, &buf, &match_count));
+
+	printf("Found %lu \n", match_count);
+
+	printf("%llu\n", buf);
 
 	// assert(delete_contact(name, strlen(name)) == 1);
 
