@@ -49,9 +49,27 @@ int main()
 
 	printf("status: %d\n", search_contact(query, strlen(query), 100, &buf, &match_count));
 
-	printf("Found %lu \n", match_count);
+	printf("Found %llu \n", match_count);
 
-	printf("%llu\n", buf);
+	for (int i = 0; i < match_count; i++)
+	{
+		int name_len = buf[i][0];
+		int pn_len = buf[i][1];
+
+		for (int j = 0; j < name_len; j++)
+		{
+			printf("%c", buf[i][2 + j]);
+		}
+
+		printf("\t");
+
+		for (int j = 0; j < pn_len; j++)
+		{
+			printf("%c", buf[i][name_len + 2 + j]);
+		}
+
+		printf("\n");
+	}
 
 	// assert(delete_contact(name, strlen(name)) == 1);
 

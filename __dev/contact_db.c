@@ -266,9 +266,12 @@ static int _unlocked_search_contact(const char *query, size_t query_length, uint
 
 		if (header[0] == 1 && header[1] >= query_length)
 		{
-			char *record = malloc(sizeof(char) * (header[1] + header[2]));
+			char *record = malloc(sizeof(char) * (2 + header[1] + header[2]));
 
-			bytes_read = pread_exact(contact_db_fd, record, header[1], offset);
+			record[0] = header[1];
+			record[1] = header[2];
+
+			bytes_read = pread_exact(contact_db_fd, record + 2, header[1], offset);
 
 			if (bytes_read == -1)
 			{
@@ -284,33 +287,37 @@ static int _unlocked_search_contact(const char *query, size_t query_length, uint
 
 			offset += header[1];
 
-			if (memcmpcaseins(record, query, query_length) == 0)
+			if (memcmpcaseins(record + 2, query, query_length) == 0)
 			{
 				// add phone number
-				bytes_read = pread_exact(contact_db_fd, record + header[1], header[2], offset);
+				bytes_read = pread_exact(contact_db_fd, record + 2 + header[1], header[2], offset);
 
 				if (bytes_read == -1)
 				{
 					// i/o error
+					free(record);
 					return -1;
 				}
 
 				if (bytes_read < header[2])
 				{
 					// corrupted database
+					free(record);
 					return -2;
 				}
 
-				*buf[*match_count] = record;
+				(*buf)[*match_count] = record;
 
-				// ero qui che combattevo con un modo per scrivere nel buffer quando hai trovato i
-				// contatti, glhf
-				++*match_count;
+				++(*match_count);
 
 				if (*match_count == limit)
 				{
 					return 0;
 				}
+			}
+			else
+			{
+				free(record);
 			}
 
 			offset += header[2];
@@ -321,6 +328,15 @@ static int _unlocked_search_contact(const char *query, size_t query_length, uint
 			offset += header[1] + header[2];
 		}
 	}
+}
+
+void free_query_buffer(char **buf, size_t len)
+{
+	for (int i = 0; i < len; i++)
+	{
+		free(buf[i]);
+	}
+	free(buf);
 }
 
 int add_contact(const char *name, const char *phone_number, uint8_t name_length,
@@ -367,6 +383,11 @@ int search_contact(const char *query, size_t query_length, uint8_t limit, char *
 	}
 
 	int status = _unlocked_search_contact(query, query_length, limit, buf, match_count);
+
+	if (status != 0)
+	{
+		free_query_buffer(*buf, *match_count);
+	}
 
 	if (!rwlock_release_reader(&semaphore))
 	{

@@ -3,15 +3,20 @@
 #include "credentials.h"
 #include "requests.h"
 
+#include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <netinet/in.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+
+int conn_fd;
 
 void prompt_login()
 {
@@ -41,11 +46,11 @@ void prompt_login()
 
 		switch (login(username, password))
 		{
-		case LOGIN_OK:
+		case OK:
 			printf(" Accesso eseguito con successo!\n\n");
 			success = true;
 			break;
-		case LOGIN_SERVER_ERROR:
+		case SERVER_ERROR:
 			printf(" Errore del server, riprova più tardi!\n");
 			break;
 		default:
@@ -83,14 +88,14 @@ void prompt_registration()
 
 		switch (signup(username, password))
 		{
-		case SIGNUP_OK:
+		case OK:
 			printf(" Registrazione eseguita con successo!\n\n");
 			success = true;
 			break;
-		case SIGNUP_USERNAME_TAKEN:
+		case INVALID_CREDENTIALS:
 			printf(" Username già registrato! Ritenta.\n");
 			break;
-		case SIGNUP_SERVER_ERROR:
+		case SERVER_ERROR:
 			printf(" Errore del server, riprova più tardi!\n");
 			break;
 		default:
@@ -159,15 +164,15 @@ void prompt_search()
 
 	size_t count;
 
-	search_status status = search_contact(buffer, CONTACT_BUFFER_SIZE, &count, contact_name);
+	status_t status = search_contact(buffer, CONTACT_BUFFER_SIZE, &count, contact_name);
 
 	switch (status)
 	{
-	case SEARCH_SERVER_ERROR:
+	case SERVER_ERROR:
 		printf(" Errore del server, riprova più tardi!\n");
 		exit(0);
 		break;
-	case SEARCH_UNAUTHORIZED:
+	case UNAUTHORIZED:
 		printf(" Non sei autorizzato ad eseguire questa operazione!\n");
 		exit(0);
 		break;
@@ -189,7 +194,7 @@ void prompt_search()
 		printf("| %s: %s\n", buffer[i].name, buffer[i].phone_number);
 	}
 
-	if (status == SEARCH_FEWER_RETURNED)
+	if (status == FEWER_RETURNED)
 	{
 		printf(" Mostrati i primi %zu risultati\n", count);
 	}
@@ -224,14 +229,14 @@ void prompt_add_contact()
 
 		switch (add_contact(name, phone_number))
 		{
-		case ADD_CONTACT_ALREAD_EXISTS:
+		case CONTACT_ALREADY_EXISTS:
 			printf(" Il contatto già esiste!\n");
 			break;
-		case ADD_CONTACT_SERVER_ERROR:
+		case SERVER_ERROR:
 			printf(" Errore del server, riprova più tardi!\n");
 			exit(0);
 			break;
-		case ADD_CONTACT_OK:
+		case OK:
 			printf(" Contatto aggiunto con successo!\n"
 				   "============================="
 				   "\n\n");
@@ -244,7 +249,7 @@ void prompt_add_contact()
 	}
 }
 
-void prompt_operation(auth_level level)
+void prompt_operation(auth_level_t level)
 {
 	while (1)
 	{
@@ -286,12 +291,54 @@ void prompt_operation(auth_level level)
 	}
 }
 
+int connect_to_server(const char *ip)
+{
+	struct sockaddr_in server_addr = {0};
+
+	conn_fd = socket(AF_INET, SOCK_STREAM, 0);
+
+	if (conn_fd < 0)
+	{
+		perror("Errore creazione socket");
+		return -1;
+	}
+
+	server_addr.sin_family = AF_INET;
+	server_addr.sin_port = htons(SERVER_PORT);
+
+	if (inet_pton(AF_INET, ip, &server_addr.sin_addr) <= 0)
+	{
+		perror("Indirizzo IP non valido");
+		close(conn_fd);
+		return -1;
+	}
+
+	// 3. Connessione al server (avvia il 3-way handshake TCP)
+	if (connect(conn_fd, (struct sockaddr *) &server_addr, sizeof(server_addr)) < 0)
+	{
+		perror("Connessione fallita");
+		close(conn_fd);
+		return -1;
+	}
+
+	return 0;
+}
+
 int main(int argc, char **argv)
 {
 	printf("===== Elenco Telefonico =====\n\n");
 
 	char username[MAX_USERNAME_LEN + 1];
 	char password[MAX_PASSWORD_LEN + 1];
+
+	char *ip = argv[0];
+
+	if (connect_to_server(ip) == -1)
+	{
+		return -1;
+	}
+
+	printf("Connesso a %s:%d\n", ip, SERVER_PORT);
 
 	if (access(CREDENTIALS_FILENAME, F_OK | R_OK | W_OK) == -1)
 	{
@@ -320,7 +367,7 @@ int main(int argc, char **argv)
 
 	prompt_auth();
 
-	auth_level level = getAuthLevel();
+	auth_level_t level = getAuthLevel();
 
 	if (level == ANONYMOUS)
 	{

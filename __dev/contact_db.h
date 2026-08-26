@@ -31,4 +31,6 @@ int delete_contact(const char *name, uint8_t name_length);
 int search_contact(const char *query, size_t query_length, uint8_t limit, char ***buf,
 				   size_t *match_count);
 
+void free_query_buffer(char **buf, size_t len);
+
 #endif

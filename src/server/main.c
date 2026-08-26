@@ -1,6 +1,13 @@
 #include "../common/utils.h"
+#include "../config.h"
 #include "../protocol.h"
+#include "database/contact_db.h"
+#include "database/user_db.h"
+#include "delete.h"
+#include "insert.h"
 #include "login.h"
+#include "register.h"
+#include "search.h"
 #include "sender.h"
 
 #include <netinet/in.h>
@@ -15,9 +22,6 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
-
-#define SERVER_PORT 5050
-#define MAX_CONNECTIONS 3
 
 typedef struct _connection_args
 {
@@ -38,6 +42,15 @@ sem_t conn_sem;
 
 int main(int argc, char **argv)
 {
+	if (!init_user_db())
+	{
+		error("User db initialization errror!");
+	}
+
+	if (!init_contact_db())
+	{
+		error("Contact db initialization error!");
+	}
 
 	if (sem_init(&conn_sem, 0, MAX_CONNECTIONS) == -1)
 	{
@@ -121,60 +134,64 @@ void *connection_handler(void *args)
 
 	printf("Connected to %s!\n", ipstr);
 
-	uint8_t start_seq;
-
-	ssize_t res = recv(conn_args->conn_fd, &start_seq, 1, 0);
-
-	if (res == 0)
-	{
-		printf("Disconnected from %s!\n", ipstr);
-
-		close(conn_args->conn_fd);
-		sem_post(&conn_sem);
-		return NULL;
-	}
-	else if (res == -1)
-	{
-		perror("Recv error");
-
-		close(conn_args->conn_fd);
-		sem_post(&conn_sem);
-		return NULL;
-	}
-	else if (start_seq != STARTING_SEQ)
-	{
-		printf("Recived malformed packet from %s, closing connection!\n", ipstr);
-
-		close(conn_args->conn_fd);
-		sem_post(&conn_sem);
-		return NULL;
-	}
-
 	user_t user = {0};
 
 	while (1)
 	{
+		printf("\n");
 
-		/*
-		 * int byte_letti = 0;
-			while (byte_letti < payload_length) {
-		int n = recv(socket_fd, buffer + byte_letti, payload_length - byte_letti, 0);
+		// if (user.username == NULL)
+		// {
+		// 	printf("User is not logged in\n");
+		// }
+		// else
+		// {
+		// 	switch (user.auth_level)
+		// 	{
+		// 	case USER:
+		// 		printf("[USER]");
+		// 		break;
+		// 	case ADMIN:
+		// 		printf("[ADMIN]");
+		// 		break;
+		// 	default:
+		// 		break;
+		// 	}
+		// 	printf(" '%s'\n", user.username);
+		// }
 
-		if (n > 0) {
-			byte_letti += n; // Accumula i byte letti
-		} else if (n == 0) {
-			// IL CLIENT HA CHIUSO LA CONNESSIONE PREMATURAMENTE!
-			break;
-		} else {
-			// Errore della socket
-			break;
+		uint8_t start_seq;
+
+		ssize_t res = recv(conn_args->conn_fd, &start_seq, 1, 0);
+
+		if (res == 0)
+		{
+			printf("Disconnected from %s!\n", ipstr);
+
+			close(conn_args->conn_fd);
+			sem_post(&conn_sem);
+			return NULL;
 		}
-			}
-		 */
-		packet_header_t header;
-		ssize_t res = recv(conn_args->conn_fd, &header, sizeof(packet_header_t), 0);
+		else if (res == -1)
+		{
+			perror("Recv error");
 
-		header.payload_size = ntohs(header.payload_size);
+			close(conn_args->conn_fd);
+			sem_post(&conn_sem);
+			return NULL;
+		}
+		else if (start_seq != STARTING_SEQ)
+		{
+			printf("Recived malformed packet from %s, closing connection!\n", ipstr);
+
+			close(conn_args->conn_fd);
+			sem_post(&conn_sem);
+			return NULL;
+		}
+
+		unsigned char _header[3];
+
+		res = recv(conn_args->conn_fd, &_header, 3, 0);
 
 		if (res == 0)
 		{
@@ -193,20 +210,80 @@ void *connection_handler(void *args)
 			return NULL;
 		}
 
+		packet_header_t header;
+
+		header.opcode = _header[0];
+		header.payload_size = (_header[1] << 8) + _header[2];
+
+#ifdef DEBUG
+		printf("Opcode: 0x%02X\n", header.opcode);
+		printf("Payload_size: %d\n", header.payload_size);
+#endif
+
 		switch (header.opcode)
 		{
 		case LOGIN:
-			handle_login(&header, &user, conn_args->conn_fd);
+			if (handle_login(&header, &user, conn_args->conn_fd) == -1)
+			{
+				close(conn_args->conn_fd);
+				sem_post(&conn_sem);
+			}
 			break;
 		case REGISTER:
+			if (handle_register(&header, &user, conn_args->conn_fd) == -1)
+			{
+				close(conn_args->conn_fd);
+				sem_post(&conn_sem);
+			}
+			break;
+		case INSERT:
+			if (user.auth_level != ADMIN)
+			{
+				send_packet(conn_args->conn_fd, UNAUTHORIZED, NULL, 0);
+				discard_bytes(conn_args->conn_fd, header.payload_size);
+			}
+			else
+			{
+				if (handle_insert(&header, conn_args->conn_fd) == -1)
+				{
+					close(conn_args->conn_fd);
+					sem_post(&conn_sem);
+				}
+			}
+			break;
+		case DELETE:
+			if (user.auth_level != ADMIN)
+			{
+				send_packet(conn_args->conn_fd, UNAUTHORIZED, NULL, 0);
+				discard_bytes(conn_args->conn_fd, header.payload_size);
+			}
+			else
+			{
+				if (handle_delete(&header, conn_args->conn_fd) == -1)
+				{
+					close(conn_args->conn_fd);
+					sem_post(&conn_sem);
+				}
+			}
 			break;
 		case SEARCH:
-			break;
-		case ADD_CONTACT:
+			if (user.auth_level != ADMIN && user.auth_level != USER)
+			{
+				send_packet(conn_args->conn_fd, UNAUTHORIZED, NULL, 0);
+				discard_bytes(conn_args->conn_fd, header.payload_size);
+			}
+			else
+			{
+				if (handle_search(&header, conn_args->conn_fd) == -1)
+				{
+					close(conn_args->conn_fd);
+					sem_post(&conn_sem);
+				}
+			}
 			break;
 		default:
-			// todo respond with proper status code instead of closing connection
 			printf("Recived malformed packet! Closing connection with %s...\n", ipstr);
+			send_packet(conn_args->conn_fd, MALFORMED_REQUEST, NULL, 0);
 			close(conn_args->conn_fd);
 			sem_post(&conn_sem);
 			return NULL;

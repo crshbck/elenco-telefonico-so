@@ -1,26 +1,26 @@
 #include "requests.h"
 
-auth_level level;
+auth_level_t level;
 
-auth_level getAuthLevel() { return level; }
+auth_level_t getAuthLevel() { return level; }
 
-login_status login(const char *username, const char *password)
+status_t login(const char *username, const char *password)
 {
 	// todo
 
 	level = ADMIN;
 
-	return LOGIN_OK;
+	return OK;
 }
 
-signup_status signup(const char *username, const char *password)
+status_t signup(const char *username, const char *password)
 {
 	// todo
 
-	return SIGNUP_OK;
+	return OK;
 }
 
-search_status search_contact(contact *buffer, const int max, size_t *count, const char *name)
+status_t search_contact(contact *buffer, const int max, size_t *count, const char *name)
 {
 	buffer[0] = (contact) {
 		.name = "Mario Rossi",
@@ -46,4 +46,4 @@ search_status search_contact(contact *buffer, const int max, size_t *count, cons
 	return SEARCH_OK;
 }
 
-add_contact_status add_contact(char *name, char *phone_number) { return ADD_CONTACT_OK; }
+status_t add_contact(char *name, char *phone_number) { return ADD_CONTACT_OK; }
