@@ -22,8 +22,11 @@ int handle_search(const packet_header_t *header, int conn_fd)
 
 	if (read_bytes < header->payload_size)
 	{
-		// todo check return status
-		send_packet(conn_fd, MALFORMED_REQUEST, NULL, 0);
+		if (!send_packet(conn_fd, MALFORMED_REQUEST, NULL, 0))
+		{
+			fprintf(stderr, "Error sending packet!\n");
+			return -1;
+		}
 		return 0;
 	}
 

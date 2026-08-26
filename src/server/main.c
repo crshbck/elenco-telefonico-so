@@ -117,7 +117,7 @@ int main(int argc, char **argv)
 		// Refuse connection
 		else
 		{
-			write(conn_fd, "Connection refused! Server Busy\n", 33); // TODO: cambia
+			write(conn_fd, "Connection refused! Server Busy\n", 33);
 			close(conn_fd);
 		}
 	}
@@ -138,8 +138,6 @@ void *connection_handler(void *args)
 
 	while (1)
 	{
-		printf("\n");
-
 		// if (user.username == NULL)
 		// {
 		// 	printf("User is not logged in\n");
@@ -149,10 +147,10 @@ void *connection_handler(void *args)
 		// 	switch (user.auth_level)
 		// 	{
 		// 	case USER:
-		// 		printf("[USER]");
+		// 		printf("User is logged in as [USER]");
 		// 		break;
 		// 	case ADMIN:
-		// 		printf("[ADMIN]");
+		// 		printf("User is logged in as [ADMIN]");
 		// 		break;
 		// 	default:
 		// 		break;

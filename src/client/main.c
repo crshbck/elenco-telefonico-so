@@ -1,16 +1,16 @@
 #include "../common/utils.h"
 #include "../config.h"
-#include "credentials.h"
+#include "crypto.h"
 #include "requests.h"
 
 #include <arpa/inet.h>
-#include <errno.h>
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -34,6 +34,9 @@ void prompt_login()
 			error("Input error!");
 		}
 
+		// remove terminator
+		username[strcspn(username, "\n")] = '\0';
+
 		printf(" |  Password: ");
 
 		char password[MAX_PASSWORD_LEN + 1];
@@ -42,9 +45,16 @@ void prompt_login()
 			error("Input error!");
 		}
 
+		// remove terminator
+		password[strcspn(password, "\n")] = '\0';
+
+		uint8_t password_hash[32];
+
+		compute_sha256(password, strlen(password), password_hash);
+
 		printf("\n");
 
-		switch (login(username, password))
+		switch (login(conn_fd, username, password_hash, strlen(username)))
 		{
 		case OK:
 			printf(" Accesso eseguito con successo!\n\n");
@@ -52,6 +62,10 @@ void prompt_login()
 			break;
 		case SERVER_ERROR:
 			printf(" Errore del server, riprova più tardi!\n");
+			exit(0);
+			break;
+		case INVALID_CREDENTIALS:
+			printf(" Credenziali errate!\n");
 			break;
 		default:
 			printf(" Errore sconosciuto, riprova più tardi!\n");
@@ -76,6 +90,9 @@ void prompt_registration()
 			error("Input error!");
 		}
 
+		// remove terminator
+		username[strcspn(username, "\n")] = '\0';
+
 		printf(" |  Password: ");
 
 		char password[MAX_PASSWORD_LEN + 1];
@@ -84,13 +101,20 @@ void prompt_registration()
 			error("Input error!");
 		}
 
+		// remove terminator
+		password[strcspn(password, "\n")] = '\0';
+
+		uint8_t password_hash[32];
+
+		compute_sha256(password, strlen(password), password_hash);
+
 		printf("\n");
 
-		switch (signup(username, password))
+		switch (signup(conn_fd, username, password_hash, strlen(username)))
 		{
 		case OK:
 			printf(" Registrazione eseguita con successo!\n\n");
-			success = true;
+			exit(0);
 			break;
 		case INVALID_CREDENTIALS:
 			printf(" Username già registrato! Ritenta.\n");
@@ -107,10 +131,10 @@ void prompt_registration()
 
 void prompt_auth()
 {
-#ifdef DEBUG
-	login("admin", "admin");
-	return;
-#endif
+	// #ifdef DEBUG
+	// 	login("admin", "admin");
+	// 	return;
+	// #endif
 
 	bool isopvalid = false;
 
@@ -148,23 +172,27 @@ void prompt_auth()
 
 void prompt_search()
 {
-	printf("Inserisci il nome del contatto:\n"
+	printf("Inserisci il nome del contatto (vuoto per mostrarne il massimo):\n"
 		   "\n"
 		   " > ");
 
-	char contact_name[MAX_CONTACT_NAME_LEN + 1];
-	if (fgets(contact_name, MAX_CONTACT_NAME_LEN + 1, stdin) == NULL)
+	char query[MAX_CONTACT_NAME_LEN + 1];
+	if (fgets(query, MAX_CONTACT_NAME_LEN + 1, stdin) == NULL)
 	{
 		error("Input error!");
 	}
 
+	// remove terminator
+	query[strcspn(query, "\n")] = '\0';
+
 	const size_t CONTACT_BUFFER_SIZE = 12;
 
-	contact buffer[CONTACT_BUFFER_SIZE];
+	contact_t buffer[CONTACT_BUFFER_SIZE];
 
 	size_t count;
 
-	status_t status = search_contact(buffer, CONTACT_BUFFER_SIZE, &count, contact_name);
+	status_t status =
+		search_contact(conn_fd, buffer, CONTACT_BUFFER_SIZE, &count, query, strlen(query));
 
 	switch (status)
 	{
@@ -217,6 +245,9 @@ void prompt_add_contact()
 			error("Input error!");
 		}
 
+		// remove terminator
+		name[strcspn(name, "\n")] = '\0';
+
 		printf(" | Numero di telefono: ");
 
 		char phone_number[MAX_PHONE_NUMBER_LENGTH + 1];
@@ -225,9 +256,12 @@ void prompt_add_contact()
 			error("Input error!");
 		}
 
+		// remove terminator
+		phone_number[strcspn(phone_number, "\n")] = '\0';
+
 		printf("\n");
 
-		switch (add_contact(name, phone_number))
+		switch (add_contact(conn_fd, name, phone_number, strlen(name), strlen(phone_number)))
 		{
 		case CONTACT_ALREADY_EXISTS:
 			printf(" Il contatto già esiste!\n");
@@ -308,7 +342,7 @@ int connect_to_server(const char *ip)
 
 	if (inet_pton(AF_INET, ip, &server_addr.sin_addr) <= 0)
 	{
-		perror("Indirizzo IP non valido");
+		fprintf(stderr, "Indirizzo IP '%s' non valido\n", ip);
 		close(conn_fd);
 		return -1;
 	}
@@ -328,10 +362,13 @@ int main(int argc, char **argv)
 {
 	printf("===== Elenco Telefonico =====\n\n");
 
-	char username[MAX_USERNAME_LEN + 1];
-	char password[MAX_PASSWORD_LEN + 1];
+	if (argc < 2)
+	{
+		printf("Utilizzo: %s <server_ip>\n", argv[0]);
+		exit(-1);
+	}
 
-	char *ip = argv[0];
+	char *ip = argv[1];
 
 	if (connect_to_server(ip) == -1)
 	{
@@ -340,39 +377,27 @@ int main(int argc, char **argv)
 
 	printf("Connesso a %s:%d\n", ip, SERVER_PORT);
 
-	if (access(CREDENTIALS_FILENAME, F_OK | R_OK | W_OK) == -1)
-	{
-		if (errno == EACCES)
-		{
-			error("Credentials file access error!");
-		}
-	}
-	else
-	{
-		if (load_credentials(username, password) == -1)
-		{
-			fprintf(stderr, "Credentials file is not valid!\n");
-			exit(-1);
-		}
-		else
-		{
-			printf(" Trying to log in as '%s'\n", username);
-
-			if (login(username, password) == -1)
-			{
-				printf(" Credentials inside credentials file are not valid!\n");
-			}
-		}
-	}
-
 	prompt_auth();
 
-	auth_level_t level = getAuthLevel();
+	auth_level_t level = get_auth_level();
 
 	if (level == ANONYMOUS)
 	{
 		printf(" Non hai nessun permesso!\n");
 		exit(0);
+	}
+	else if (level == USER)
+	{
+		printf("Livello di autorizzazione: UTENTE\n");
+	}
+	else if (level == ADMIN)
+	{
+		printf("Livello di autorizzazione: ADMIN\n");
+	}
+	else
+	{
+		printf("Errore\n");
+		exit(-1);
 	}
 
 	prompt_operation(level);

@@ -21,8 +21,11 @@ int handle_insert(const packet_header_t *header, int conn_fd)
 
 	if (read_bytes < header->payload_size)
 	{
-		// todo check return status
-		send_packet(conn_fd, MALFORMED_REQUEST, NULL, 0);
+		if (!send_packet(conn_fd, MALFORMED_REQUEST, NULL, 0))
+		{
+			fprintf(stderr, "Error sending packet!\n");
+			return -1;
+		}
 		return 0;
 	}
 
@@ -31,8 +34,11 @@ int handle_insert(const packet_header_t *header, int conn_fd)
 
 	if (name_length > MAX_CONTACT_NAME_LEN || phone_number_length > MAX_PHONE_NUMBER_LENGTH)
 	{
-		// todo check return status
-		send_packet(conn_fd, MALFORMED_REQUEST, NULL, 0);
+		if (!send_packet(conn_fd, MALFORMED_REQUEST, NULL, 0))
+		{
+			fprintf(stderr, "Error sending packet!\n");
+			return -1;
+		}
 		return 0;
 	}
 
@@ -41,19 +47,26 @@ int handle_insert(const packet_header_t *header, int conn_fd)
 	switch (add_contact(&buffer[1], &buffer[1 + name_length], name_length, phone_number_length))
 	{
 	case 1:
-		// todo check return status
-		send_packet(conn_fd, OK, NULL, 0);
+		if (!send_packet(conn_fd, OK, NULL, 0))
+		{
+			fprintf(stderr, "Error sending packet!\n");
+			return -1;
+		}
 		return 1;
 		break;
 	case -1:
-		// todo check return status
-		send_packet(conn_fd, SERVER_ERROR, NULL, 0);
+		if (!send_packet(conn_fd, SERVER_ERROR, NULL, 0))
+		{
+			fprintf(stderr, "Error sending packet!\n");
+		}
 		perror("Database I/O error! Terminating...");
 		exit(-1);
 		break;
 	case -2:
-		// todo check return status
-		send_packet(conn_fd, SERVER_ERROR, NULL, 0);
+		if (!send_packet(conn_fd, SERVER_ERROR, NULL, 0))
+		{
+			fprintf(stderr, "Error sending packet!\n");
+		}
 		fprintf(stderr, "Database is corrupted! Terminating...\n");
 		exit(-1);
 		break;

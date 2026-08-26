@@ -12,6 +12,7 @@ void error(const char *m)
 	perror(m);
 	exit(-1);
 }
+
 ssize_t recv_exact(int fd, void *buf, size_t count, int flags)
 {
 	size_t bytes_left = count;

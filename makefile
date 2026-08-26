@@ -12,9 +12,9 @@ client:
 	gcc src/client/*.c src/common/*.c -o client -lcrypto
 
 server_debug:
-	gcc src/server/*.c src/common/*.c src/server/database/*.c $(CFLAGSDEBUG) -o server
+	gcc src/server/*.c src/common/*.c src/server/database/*.c $(CFLAGSDEBUG) -o server -lcrypto
 
 client_debug:
-	gcc src/client/*.c src/common/*.c $(CFLAGSDEBUG) -o client
+	gcc src/client/*.c src/common/*.c $(CFLAGSDEBUG) -o client -lcrypto
 
 .PHONY: all debug client server

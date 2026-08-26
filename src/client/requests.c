@@ -1,49 +1,239 @@
 #include "requests.h"
 
-auth_level_t level;
+#include "../common/utils.h"
 
-auth_level_t getAuthLevel() { return level; }
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
-status_t login(const char *username, const char *password)
+auth_level_t auth_level;
+
+auth_level_t get_auth_level() { return auth_level; }
+
+status_t login(int conn_fd, const char *username, const uint8_t *password, size_t username_length)
 {
-	// todo
+	// starting seq (1B) + opcode (1B) + payload_len (2B) + username (?B) + password (32B)
+	char buffer[1 + 1 + 2 + username_length + 32];
 
-	level = ADMIN;
+	buffer[0] = STARTING_SEQ;
+	buffer[1] = 0x00;
+	buffer[2] = (32 + username_length) & 0xFF00;
+	buffer[3] = (32 + username_length) & 0x00FF;
+	memcpy(&buffer[4], username, username_length);
+	memcpy(&buffer[4 + username_length], password, 32);
 
-	return OK;
+	// for (int i = 0; i < 32; i++)
+	// {
+	// 	printf("%02X ", password[i]);
+	// }
+
+	if (send_exact(conn_fd, buffer, sizeof(buffer), 0) < sizeof(buffer))
+	{
+		return SERVER_ERROR;
+	}
+
+	unsigned char header[3];
+
+	ssize_t res = recv_exact(conn_fd, header, 3, 0);
+
+	if (res == -1)
+	{
+		printf("Il server non risponde, riprova più tardi!\n");
+		exit(0);
+	}
+
+	if (res < 3)
+	{
+		return SERVER_ERROR;
+	}
+
+	if (header[0] == OK)
+	{
+		res = recv_exact(conn_fd, header, 1, 0);
+
+		if (res == -1)
+		{
+			printf("Il server non risponde, riprova più tardi!\n");
+			exit(0);
+		}
+
+		if (res < 1)
+		{
+			return SERVER_ERROR;
+		}
+
+		auth_level = header[0];
+		return OK;
+	}
+
+	return header[0];
 }
 
-status_t signup(const char *username, const char *password)
+status_t signup(int conn_fd, const char *username, const uint8_t *password, size_t username_length)
 {
-	// todo
+	// starting seq (1B) + opcode (1B) + payload_len (2B) + username (?B) + password (32B)
+	char buffer[1 + 1 + 2 + username_length + 32];
 
-	return OK;
+	buffer[0] = STARTING_SEQ;
+	buffer[1] = 0x01;
+	buffer[2] = (32 + username_length) & 0xFF00;
+	buffer[3] = (32 + username_length) & 0x00FF;
+	memcpy(&buffer[4], username, username_length);
+	memcpy(&buffer[4 + username_length], password, 32);
+
+	if (send_exact(conn_fd, buffer, sizeof(buffer), 0) < sizeof(buffer))
+	{
+		return SERVER_ERROR;
+	}
+
+	unsigned char header[3];
+
+	ssize_t res = recv_exact(conn_fd, header, 3, 0);
+
+	if (res == -1)
+	{
+		printf("Il server non risponde, riprova più tardi!\n");
+		exit(0);
+	}
+
+	if (res < 3)
+	{
+		return SERVER_ERROR;
+	}
+
+	return header[0];
 }
 
-status_t search_contact(contact *buffer, const int max, size_t *count, const char *name)
+status_t search_contact(int conn_fd, contact_t *output_buffer, const int max, size_t *match_count,
+						const char *query, size_t query_length)
 {
-	buffer[0] = (contact) {
-		.name = "Mario Rossi",
-		.phone_number = "+39 312 345 6789",
-	};
+	// starting seq (1B) + opcode (1B) + payload_len (2B) + limit (1B) + query (?B)
+	char buffer[1 + 1 + 2 + 1 + query_length];
 
-	buffer[1] = (contact) {
-		.name = "Luca Bianchi",
-		.phone_number = "+39 333 987 6543",
-	};
+	buffer[0] = STARTING_SEQ;
+	buffer[1] = 0x04;
+	buffer[2] = (1 + query_length) & 0xFF00;
+	buffer[3] = (1 + query_length) & 0x00FF;
+	buffer[4] = max;
+	memcpy(&buffer[5], query, query_length);
 
-	buffer[2] = (contact) {
-		.name = "Elena Verdi",
-		.phone_number = "+39 347 112 2334",
-	};
+	if (send_exact(conn_fd, buffer, sizeof(buffer), 0) < sizeof(buffer))
+	{
+		return SERVER_ERROR;
+	}
 
-	buffer[3] = (contact) {
-		.name = "Francesco Neri",
-		.phone_number = "+39 320 555 7788",
-	};
+	unsigned char header[3];
 
-	*count = 4;
-	return SEARCH_OK;
+	ssize_t res = recv_exact(conn_fd, header, 3, 0);
+
+	if (res == -1)
+	{
+		printf("Il server non risponde, riprova più tardi!\n");
+		exit(0);
+	}
+
+	if (res < 3)
+	{
+		return SERVER_ERROR;
+	}
+
+	contact_t contact;
+
+	size_t size = ((header[1] << 8) + header[2]);
+
+	uint8_t *_contact_buffer = malloc(sizeof(uint8_t) * size);
+
+	res = recv_exact(conn_fd, _contact_buffer, size, 0);
+
+	if (res == -1)
+	{
+		printf("Il server non risponde, riprova più tardi!\n");
+		exit(0);
+	}
+
+	if (res < size)
+	{
+		return SERVER_ERROR;
+	}
+
+	size_t offset = 0;
+	*match_count = 0;
+
+	while (offset < size && *match_count < max)
+	{
+		// sanity check
+		if (offset + 2 > size)
+		{
+			break;
+		}
+
+		uint8_t name_length = _contact_buffer[offset];
+		uint8_t phone_number_length = _contact_buffer[offset + 1];
+
+		// sanity check
+		if (offset + 2 + name_length + phone_number_length > size)
+		{
+			break;
+		}
+
+		// todo check lunghezze
+
+		// copy inside buffer
+		memcpy(output_buffer[*match_count].name, &_contact_buffer[offset + 2], name_length);
+		output_buffer[*match_count].name[name_length] = '\0';
+
+		memcpy(output_buffer[*match_count].phone_number, &_contact_buffer[offset + 2 + name_length],
+			   phone_number_length);
+
+		output_buffer[*match_count].phone_number[phone_number_length] = '\0';
+
+		// step record
+		offset += 2 + name_length + phone_number_length;
+		(*match_count)++;
+	}
+
+	return header[0];
 }
 
-status_t add_contact(char *name, char *phone_number) { return ADD_CONTACT_OK; }
+status_t add_contact(int conn_fd, char *name, char *phone_number, size_t name_length,
+					 size_t phone_number_length)
+{
+	// starting seq (1B) + opcode (1B) + payload_len (2B) + name_length (1B) + name (?B) +
+	// phone_number (?B)
+	size_t payload_length = 1 + name_length + phone_number_length;
+
+	char buffer[1 + 1 + 2 + payload_length];
+
+	buffer[0] = STARTING_SEQ;
+	buffer[1] = 0x01;
+	buffer[2] = payload_length & 0xFF00;
+	buffer[3] = payload_length & 0x00FF;
+	buffer[4] = name_length;
+
+	memcpy(&buffer[5], name, name_length);
+	memcpy(&buffer[5 + name_length], phone_number, phone_number_length);
+
+	if (send_exact(conn_fd, buffer, sizeof(buffer), 0) < sizeof(buffer))
+	{
+		return SERVER_ERROR;
+	}
+
+	unsigned char header[3];
+
+	ssize_t res = recv_exact(conn_fd, header, 3, 0);
+
+	if (res == -1)
+	{
+		printf("Il server non risponde, riprova più tardi!\n");
+		exit(0);
+	}
+
+	if (res < 3)
+	{
+		return SERVER_ERROR;
+	}
+
+	return header[0];
+}

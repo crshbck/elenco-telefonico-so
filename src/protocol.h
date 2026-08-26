@@ -41,11 +41,11 @@ typedef struct _user_t
 	auth_level_t auth_level;
 } user_t;
 
-typedef struct _contact
+typedef struct _contact_t
 {
 	char name[MAX_CONTACT_NAME_LEN];
 	char phone_number[MAX_PHONE_NUMBER_LENGTH];
-} contact;
+} contact_t;
 
 typedef enum _packet_type
 {

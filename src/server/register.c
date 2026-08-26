@@ -24,15 +24,21 @@ int handle_register(const packet_header_t *header, user_t *user, int conn_fd)
 
 	if (username_length > MAX_USERNAME_LEN)
 	{
-		// todo check return status
-		send_packet(conn_fd, MALFORMED_REQUEST, NULL, 0);
+		if (!send_packet(conn_fd, MALFORMED_REQUEST, NULL, 0))
+		{
+			fprintf(stderr, "Error sending packet!\n");
+			return -1;
+		}
 		return 0;
 	}
 
 	if (!check_username(username, username_length))
 	{
-		// todo check return status
-		send_packet(conn_fd, MALFORMED_REQUEST, NULL, 0);
+		if (!send_packet(conn_fd, MALFORMED_REQUEST, NULL, 0))
+		{
+			fprintf(stderr, "Error sending packet!\n");
+			return -1;
+		}
 		return 0;
 	}
 
@@ -45,13 +51,20 @@ int handle_register(const packet_header_t *header, user_t *user, int conn_fd)
 		break;
 	case 1:
 		// user already registered
-		// todo check return status
-		send_packet(conn_fd, INVALID_CREDENTIALS, NULL, 0);
+		if (!send_packet(conn_fd, INVALID_CREDENTIALS, NULL, 0))
+		{
+			fprintf(stderr, "Error sending packet!\n");
+			return -1;
+		}
 		return 0;
 		break;
-	case -1: // error
-		// todo check return status
-		send_packet(conn_fd, SERVER_ERROR, NULL, 0);
+	case -1:
+		// error
+		if (!send_packet(conn_fd, SERVER_ERROR, NULL, 0))
+		{
+			fprintf(stderr, "Error sending packet!\n");
+			return -1;
+		}
 		return 0;
 		break;
 	}
@@ -70,11 +83,18 @@ int handle_register(const packet_header_t *header, user_t *user, int conn_fd)
 	{
 	case 0:
 		// ok
-		// todo check return status
-		send_packet(conn_fd, OK, NULL, 0);
+		if (!send_packet(conn_fd, OK, NULL, 0))
+		{
+			fprintf(stderr, "Error sending packet!\n");
+			return -1;
+		}
 		break;
 	case -1:
-		send_packet(conn_fd, SERVER_ERROR, NULL, 0);
+		if (!send_packet(conn_fd, SERVER_ERROR, NULL, 0))
+		{
+			fprintf(stderr, "Error sending packet!\n");
+			return -1;
+		}
 		break;
 	}
 
