@@ -9,7 +9,7 @@
 
 typedef struct __attribute__((__packed__)) _packet_header_t
 {
-	char opcode;
+	unsigned char opcode;
 	uint16_t payload_size;
 } packet_header_t;
 

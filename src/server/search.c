@@ -65,7 +65,7 @@ int handle_search(const packet_header_t *header, int conn_fd)
 		status = FEWER_RETURNED;
 	}
 
-	char *search_buf = malloc(sizeof(char) * search_buf_size);
+	unsigned char *search_buf = malloc(sizeof(char) * search_buf_size);
 
 	size_t offset = 0;
 

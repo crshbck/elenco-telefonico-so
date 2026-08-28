@@ -8,7 +8,7 @@
 #include <stdio.h>
 #include <string.h>
 
-bool send_packet(int conn_fd, status_t status, char *payload, uint16_t payload_size)
+bool send_packet(int conn_fd, status_t status, unsigned char *payload, uint16_t payload_size)
 {
 	if (payload_size > 0 && payload == NULL)
 	{

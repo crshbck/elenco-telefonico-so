@@ -51,7 +51,7 @@ int handle_register(const packet_header_t *header, user_t *user, int conn_fd)
 		break;
 	case 1:
 		// user already registered
-		if (!send_packet(conn_fd, INVALID_CREDENTIALS, NULL, 0))
+		if (!send_packet(conn_fd, USERNAME_TAKEN, NULL, 0))
 		{
 			fprintf(stderr, "Error sending packet!\n");
 			return -1;

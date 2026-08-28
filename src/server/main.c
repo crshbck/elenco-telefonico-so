@@ -172,7 +172,7 @@ void *connection_handler(void *args)
 		}
 		else if (res == -1)
 		{
-			perror("Recv error");
+			perror("Recv error starting seq");
 
 			close(conn_args->conn_fd);
 			sem_post(&conn_sem);
@@ -201,7 +201,7 @@ void *connection_handler(void *args)
 		}
 		else if (res == -1)
 		{
-			perror("Recv error");
+			perror("Recv error header");
 
 			close(conn_args->conn_fd);
 			sem_post(&conn_sem);
@@ -225,6 +225,7 @@ void *connection_handler(void *args)
 			{
 				close(conn_args->conn_fd);
 				sem_post(&conn_sem);
+				return NULL;
 			}
 			break;
 		case REGISTER:
@@ -232,6 +233,7 @@ void *connection_handler(void *args)
 			{
 				close(conn_args->conn_fd);
 				sem_post(&conn_sem);
+				return NULL;
 			}
 			break;
 		case INSERT:
@@ -246,6 +248,7 @@ void *connection_handler(void *args)
 				{
 					close(conn_args->conn_fd);
 					sem_post(&conn_sem);
+					return NULL;
 				}
 			}
 			break;
@@ -261,6 +264,7 @@ void *connection_handler(void *args)
 				{
 					close(conn_args->conn_fd);
 					sem_post(&conn_sem);
+					return NULL;
 				}
 			}
 			break;
@@ -276,6 +280,7 @@ void *connection_handler(void *args)
 				{
 					close(conn_args->conn_fd);
 					sem_post(&conn_sem);
+					return NULL;
 				}
 			}
 			break;

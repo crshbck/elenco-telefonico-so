@@ -29,12 +29,9 @@ int read_username_password(const packet_header_t *header, char **username, char 
 		if (!send_packet(conn_fd, MALFORMED_REQUEST, NULL, 0))
 		{
 			fprintf(stderr, "Error sending packet!\n");
-			return -1;
 		}
-		return 0;
+		return -1;
 	}
-
-	printf("\n");
 
 	if (header->payload_size < 32 + MIN_USERNAME_LEN ||
 		header->payload_size - 32 > MAX_USERNAME_LEN)
@@ -42,9 +39,9 @@ int read_username_password(const packet_header_t *header, char **username, char 
 		if (!send_packet(conn_fd, MALFORMED_REQUEST, NULL, 0))
 		{
 			fprintf(stderr, "Error sending packet!\n");
-			return -1;
 		}
-		return 0;
+		discard_bytes(conn_fd, header->payload_size);
+		return -1;
 	}
 
 	*username_length = header->payload_size - 32;
@@ -78,9 +75,8 @@ int handle_login(const packet_header_t *header, user_t *user, int conn_fd)
 		if (!send_packet(conn_fd, MALFORMED_REQUEST, NULL, 0))
 		{
 			fprintf(stderr, "Error sending packet!\n");
-			return -1;
 		}
-		return 0;
+		return -1;
 	}
 
 	char *username, *password;
@@ -91,16 +87,16 @@ int handle_login(const packet_header_t *header, user_t *user, int conn_fd)
 		return -1;
 	}
 
-	printf("Checking db against %s\n", username);
+	printf("Checking db against '%s'\n", username);
 
 	if (!check_username(username, username_length))
 	{
+
 		if (!send_packet(conn_fd, MALFORMED_REQUEST, NULL, 0))
 		{
 			fprintf(stderr, "Error sending packet!\n");
-			return -1;
 		}
-		return 0;
+		return -1;
 	}
 
 	auth_level_t auth_level;
@@ -114,7 +110,7 @@ int handle_login(const packet_header_t *header, user_t *user, int conn_fd)
 			fprintf(stderr, "Error sending packet!\n");
 			return -1;
 		}
-		break;
+		return 0;
 	case 1:
 		free(user->username);
 		free(user->password);
@@ -123,7 +119,7 @@ int handle_login(const packet_header_t *header, user_t *user, int conn_fd)
 		user->password = password;
 		user->auth_level = auth_level;
 
-		if (!send_packet(conn_fd, OK, (char *) &auth_level, 1))
+		if (!send_packet(conn_fd, OK, (unsigned char *) &auth_level, 1))
 		{
 			fprintf(stderr, "Error sending packet!\n");
 			return -1;
@@ -133,9 +129,8 @@ int handle_login(const packet_header_t *header, user_t *user, int conn_fd)
 		if (!send_packet(conn_fd, SERVER_ERROR, NULL, 0))
 		{
 			fprintf(stderr, "Error sending packet!\n");
-			return -1;
 		}
-		break;
+		return -1;
 	}
 
 	return 0;

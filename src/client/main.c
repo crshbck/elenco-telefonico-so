@@ -1,6 +1,10 @@
-#include "../common/utils.h"
 #include "../config.h"
-#include "crypto.h"
+
+#include "./prompts/add_contact.h"
+#include "./prompts/delete_contact.h"
+#include "./prompts/login.h"
+#include "./prompts/registration.h"
+#include "./prompts/search.h"
 #include "requests.h"
 
 #include <arpa/inet.h>
@@ -10,7 +14,6 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -18,124 +21,8 @@
 
 int conn_fd;
 
-void prompt_login()
-{
-	printf(" Accesso\n");
-
-	bool success = false;
-
-	while (!success)
-	{
-		printf(" |  Username: ");
-
-		char username[MAX_USERNAME_LEN + 1];
-		if (fgets(username, MAX_USERNAME_LEN + 1, stdin) == NULL)
-		{
-			error("Input error!");
-		}
-
-		// remove terminator
-		username[strcspn(username, "\n")] = '\0';
-
-		printf(" |  Password: ");
-
-		char password[MAX_PASSWORD_LEN + 1];
-		if (fgets(password, MAX_PASSWORD_LEN + 1, stdin) == NULL)
-		{
-			error("Input error!");
-		}
-
-		// remove terminator
-		password[strcspn(password, "\n")] = '\0';
-
-		uint8_t password_hash[32];
-
-		compute_sha256(password, strlen(password), password_hash);
-
-		printf("\n");
-
-		switch (login(conn_fd, username, password_hash, strlen(username)))
-		{
-		case OK:
-			printf(" Accesso eseguito con successo!\n\n");
-			success = true;
-			break;
-		case SERVER_ERROR:
-			printf(" Errore del server, riprova più tardi!\n");
-			exit(0);
-			break;
-		case INVALID_CREDENTIALS:
-			printf(" Credenziali errate!\n");
-			break;
-		default:
-			printf(" Errore sconosciuto, riprova più tardi!\n");
-			break;
-		}
-	}
-}
-
-void prompt_registration()
-{
-	printf(" Registrazione\n");
-
-	bool success = false;
-
-	while (!success)
-	{
-		printf(" |  Username: ");
-
-		char username[MAX_USERNAME_LEN + 1];
-		if (fgets(username, MAX_USERNAME_LEN + 1, stdin) == NULL)
-		{
-			error("Input error!");
-		}
-
-		// remove terminator
-		username[strcspn(username, "\n")] = '\0';
-
-		printf(" |  Password: ");
-
-		char password[MAX_PASSWORD_LEN + 1];
-		if (fgets(password, MAX_PASSWORD_LEN + 1, stdin) == NULL)
-		{
-			error("Input error!");
-		}
-
-		// remove terminator
-		password[strcspn(password, "\n")] = '\0';
-
-		uint8_t password_hash[32];
-
-		compute_sha256(password, strlen(password), password_hash);
-
-		printf("\n");
-
-		switch (signup(conn_fd, username, password_hash, strlen(username)))
-		{
-		case OK:
-			printf(" Registrazione eseguita con successo!\n\n");
-			exit(0);
-			break;
-		case INVALID_CREDENTIALS:
-			printf(" Username già registrato! Ritenta.\n");
-			break;
-		case SERVER_ERROR:
-			printf(" Errore del server, riprova più tardi!\n");
-			break;
-		default:
-			printf(" Errore sconosciuto, riprova più tardi!\n");
-			break;
-		}
-	}
-}
-
 void prompt_auth()
 {
-	// #ifdef DEBUG
-	// 	login("admin", "admin");
-	// 	return;
-	// #endif
-
 	bool isopvalid = false;
 
 	while (!isopvalid)
@@ -154,130 +41,17 @@ void prompt_auth()
 		switch (op)
 		{
 		case '1':
-			prompt_login();
+			prompt_login(conn_fd);
 			isopvalid = true;
 			break;
 		case '2':
-			prompt_registration();
+			prompt_registration(conn_fd);
 			isopvalid = true;
 			break;
 		case 'q':
 			exit(0);
 		default:
 			printf(" Operazione non valida!\n\n");
-			break;
-		}
-	}
-}
-
-void prompt_search()
-{
-	printf("Inserisci il nome del contatto (vuoto per mostrarne il massimo):\n"
-		   "\n"
-		   " > ");
-
-	char query[MAX_CONTACT_NAME_LEN + 1];
-	if (fgets(query, MAX_CONTACT_NAME_LEN + 1, stdin) == NULL)
-	{
-		error("Input error!");
-	}
-
-	// remove terminator
-	query[strcspn(query, "\n")] = '\0';
-
-	const size_t CONTACT_BUFFER_SIZE = 12;
-
-	contact_t buffer[CONTACT_BUFFER_SIZE];
-
-	size_t count;
-
-	status_t status =
-		search_contact(conn_fd, buffer, CONTACT_BUFFER_SIZE, &count, query, strlen(query));
-
-	switch (status)
-	{
-	case SERVER_ERROR:
-		printf(" Errore del server, riprova più tardi!\n");
-		exit(0);
-		break;
-	case UNAUTHORIZED:
-		printf(" Non sei autorizzato ad eseguire questa operazione!\n");
-		exit(0);
-		break;
-	default:
-		break;
-	}
-	printf("\n");
-
-	if (count == 0)
-	{
-		printf(" Nessun contatto trovato!\n\n");
-		return;
-	}
-
-	printf("(%zu) Contatti trovati:\n|\n", count);
-
-	for (size_t i = 0; i < count; i++)
-	{
-		printf("| %s: %s\n", buffer[i].name, buffer[i].phone_number);
-	}
-
-	if (status == FEWER_RETURNED)
-	{
-		printf(" Mostrati i primi %zu risultati\n", count);
-	}
-
-	printf("============================="
-		   "\n\n");
-}
-
-void prompt_add_contact()
-{
-	bool success = false;
-
-	while (!success)
-	{
-		printf(" | Nome: ");
-
-		char name[MAX_CONTACT_NAME_LEN + 1];
-		if (fgets(name, MAX_CONTACT_NAME_LEN + 1, stdin) == NULL)
-		{
-			error("Input error!");
-		}
-
-		// remove terminator
-		name[strcspn(name, "\n")] = '\0';
-
-		printf(" | Numero di telefono: ");
-
-		char phone_number[MAX_PHONE_NUMBER_LENGTH + 1];
-		if (fgets(phone_number, MAX_PHONE_NUMBER_LENGTH + 1, stdin) == NULL)
-		{
-			error("Input error!");
-		}
-
-		// remove terminator
-		phone_number[strcspn(phone_number, "\n")] = '\0';
-
-		printf("\n");
-
-		switch (add_contact(conn_fd, name, phone_number, strlen(name), strlen(phone_number)))
-		{
-		case CONTACT_ALREADY_EXISTS:
-			printf(" Il contatto già esiste!\n");
-			break;
-		case SERVER_ERROR:
-			printf(" Errore del server, riprova più tardi!\n");
-			exit(0);
-			break;
-		case OK:
-			printf(" Contatto aggiunto con successo!\n"
-				   "============================="
-				   "\n\n");
-			success = true;
-			break;
-		default:
-			printf(" Errore sconosciuto, riprova più tardi!\n");
 			break;
 		}
 	}
@@ -293,6 +67,7 @@ void prompt_operation(auth_level_t level)
 		if (level == ADMIN)
 		{
 			printf(" 2. Aggiungi un contatto\n");
+			printf(" 3. Elimina un contatto\n");
 		}
 
 		printf(" q. Esci\n\n"
@@ -306,7 +81,7 @@ void prompt_operation(auth_level_t level)
 		switch (op)
 		{
 		case '1':
-			prompt_search();
+			prompt_search(conn_fd);
 			break;
 		case '2':
 			if (level != ADMIN)
@@ -314,7 +89,15 @@ void prompt_operation(auth_level_t level)
 				printf(" Operazione non valida!\n\n");
 				break;
 			}
-			prompt_add_contact();
+			prompt_add_contact(conn_fd);
+			break;
+		case '3':
+			if (level != ADMIN)
+			{
+				printf(" Operazione non valida!\n\n");
+				break;
+			}
+			prompt_delete_contact(conn_fd);
 			break;
 		case 'q':
 			exit(0);
@@ -347,7 +130,6 @@ int connect_to_server(const char *ip)
 		return -1;
 	}
 
-	// 3. Connessione al server (avvia il 3-way handshake TCP)
 	if (connect(conn_fd, (struct sockaddr *) &server_addr, sizeof(server_addr)) < 0)
 	{
 		perror("Connessione fallita");
