@@ -55,7 +55,11 @@ int handle_register(const packet_header_t *header, user_t *user, int conn_fd)
 
 	printf("Registering user %s\n", username);
 
-	switch (add_user(user))
+	user_t new_user;
+	new_user.username = username;
+	new_user.password = password;
+
+	switch (add_user(&new_user))
 	{
 	case 0:
 		// ok

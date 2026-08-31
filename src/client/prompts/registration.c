@@ -58,6 +58,7 @@ void prompt_registration(int conn_fd)
 			break;
 		case SERVER_ERROR:
 			printf(" Errore del server, riprova più tardi!\n");
+			exit(0);
 			break;
 		default:
 			printf(" Errore sconosciuto, riprova più tardi!\n");
