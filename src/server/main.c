@@ -43,6 +43,8 @@ sem_t conn_sem;
 
 int main(int argc, char **argv)
 {
+	int port = argc > 1 ? atoi(argv[1]) : SERVER_DEFAULT_PORT;
+
 	if (!init_user_db())
 	{
 		error("User db initialization errror!");
@@ -67,7 +69,7 @@ int main(int argc, char **argv)
 
 	struct sockaddr_in sock_addr = {0};
 	sock_addr.sin_family = AF_INET;
-	sock_addr.sin_port = htons(SERVER_PORT);
+	sock_addr.sin_port = htons(port);
 	sock_addr.sin_addr.s_addr = INADDR_ANY;
 
 	int opt = 1;
@@ -90,7 +92,7 @@ int main(int argc, char **argv)
 	printf("Started server on port %d!\n"
 		   "Commands:\n"
 		   "`perm` - Change user permissions\n\n",
-		   SERVER_PORT);
+		   port);
 
 	struct sockaddr_in client_addr = {0};
 	socklen_t client_addrlen = sizeof(client_addr);
@@ -133,7 +135,7 @@ int main(int argc, char **argv)
 		else
 		{
 			printf("Cannot accept connection!\n");
-			send_packet(conn_fd, SERVER_PORT, NULL, 0);
+			send_packet(conn_fd, SERVER_ERROR, NULL, 0);
 			close(conn_fd);
 		}
 	}

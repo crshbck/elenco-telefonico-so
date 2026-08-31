@@ -21,7 +21,10 @@
 
 int conn_fd;
 
-#define fflush(stdin) int c;while ((c = getchar()) != '\n' && c != EOF);
+#define fflush(stdin)                                                                              \
+	int c;                                                                                         \
+	while ((c = getchar()) != '\n' && c != EOF)                                                    \
+		;
 
 void prompt_auth()
 {
@@ -110,7 +113,7 @@ void prompt_operation(auth_level_t level)
 	}
 }
 
-int connect_to_server(const char *ip)
+int connect_to_server(const char *ip, int port)
 {
 	struct sockaddr_in server_addr = {0};
 
@@ -123,7 +126,7 @@ int connect_to_server(const char *ip)
 	}
 
 	server_addr.sin_family = AF_INET;
-	server_addr.sin_port = htons(SERVER_PORT);
+	server_addr.sin_port = htons(port);
 
 	if (inet_pton(AF_INET, ip, &server_addr.sin_addr) <= 0)
 	{
@@ -148,18 +151,19 @@ int main(int argc, char **argv)
 
 	if (argc < 2)
 	{
-		printf("Utilizzo: %s <server_ip>\n", argv[0]);
+		printf("Utilizzo: %s <server_ip> [port]\n", argv[0]);
 		exit(-1);
 	}
 
 	char *ip = argv[1];
+	int port = argc >= 3 ? atoi(argv[2]) : SERVER_DEFAULT_PORT;
 
-	if (connect_to_server(ip) == -1)
+	if (connect_to_server(ip, port) == -1)
 	{
 		return -1;
 	}
 
-	printf("Connesso a %s:%d\n", ip, SERVER_PORT);
+	printf("Connesso a %s:%d\n", ip, port);
 
 	prompt_auth();
 
