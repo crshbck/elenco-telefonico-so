@@ -20,7 +20,7 @@ int handle_search(const packet_header_t *header, int conn_fd)
 		return -1;
 	}
 
-	if (read_bytes < header->payload_size)
+	if (read_bytes < header->payload_size || read_bytes < 1)
 	{
 		if (!send_packet(conn_fd, MALFORMED_REQUEST, NULL, 0))
 		{
@@ -30,8 +30,8 @@ int handle_search(const packet_header_t *header, int conn_fd)
 		return 0;
 	}
 
-	int limit = buffer[0];
-	char *name = &buffer[1];
+	unsigned int limit = buffer[0];
+	char *name = header->payload_size != 1 ? &buffer[1] : NULL;
 
 	char **_raw_search_buf;
 	size_t search_buf_size;
@@ -43,11 +43,15 @@ int handle_search(const packet_header_t *header, int conn_fd)
 	case 1:
 		break;
 	case -1:
+		free_query_buffer(_raw_search_buf, match_count);
+
 		send_packet(conn_fd, SERVER_ERROR, NULL, 0);
 		perror("Database I/O error! Terminating...");
 		exit(-1);
 		break;
 	case -2:
+		free_query_buffer(_raw_search_buf, match_count);
+
 		send_packet(conn_fd, SERVER_ERROR, NULL, 0);
 		fprintf(stderr, "Database is corrupted! Terminating...\n");
 		exit(-1);
@@ -79,6 +83,7 @@ int handle_search(const packet_header_t *header, int conn_fd)
 	send_packet(conn_fd, status, search_buf, search_buf_size);
 
 	free(search_buf);
+	free(_raw_search_buf);
 
 	return 1;
 }

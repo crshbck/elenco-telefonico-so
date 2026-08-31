@@ -77,7 +77,7 @@ static int _unlocked_add_contact(const char *name, const char *phone_number, uin
 
 	unsigned char header[3];
 
-	// search for inactive contact with same record length
+	// first search for inactive contact with same record length, if not found append user to file
 	while (1)
 	{
 		ssize_t bytes_read = pread_exact(contact_db_fd, header, 3, offset);
@@ -87,8 +87,6 @@ static int _unlocked_add_contact(const char *name, const char *phone_number, uin
 		{
 			break;
 		}
-
-		offset += 3;
 
 		// error
 		if (bytes_read == -1)
@@ -101,6 +99,8 @@ static int _unlocked_add_contact(const char *name, const char *phone_number, uin
 		{
 			return -2;
 		}
+
+		offset += 3;
 
 		// check if inactive and size fits, if it does, overwrite
 		if (header[0] == 0 && (header[1] + header[2]) == (name_length + phone_number_length))
@@ -115,7 +115,7 @@ static int _unlocked_add_contact(const char *name, const char *phone_number, uin
 		}
 	}
 
-	const int record_size = 3 + name_length + phone_number_length;
+	int record_size = 3 + name_length + phone_number_length;
 
 	char contact_buf[record_size];
 
@@ -254,25 +254,35 @@ static int _unlocked_search_contact(const char *query, size_t query_length, uint
 
 		offset += 3;
 
-		if (bytes_read == -1)
-		{
-			return -1;
-		}
-
 		if (bytes_read == 0)
 		{
 			// EOF
 			return 0;
 		}
 
-		if (header[0] == 1 && header[1] >= query_length)
+		if (bytes_read == -1)
 		{
-			char *record = malloc(sizeof(char) * (2 + header[1] + header[2]));
+			return -1;
+		}
 
-			record[0] = header[1];
-			record[1] = header[2];
+		if (bytes_read < 3)
+		{
+			// corrupted database
+			return -2;
+		}
 
-			bytes_read = pread_exact(contact_db_fd, record + 2, header[1], offset);
+		unsigned char is_active = header[0];
+		unsigned char name_length = header[1];
+		unsigned char phone_number_length = header[2];
+
+		if (is_active == 1 && name_length >= query_length)
+		{
+			char *record = malloc(sizeof(char) * (2 + name_length + phone_number_length));
+
+			record[0] = name_length;
+			record[1] = phone_number_length;
+
+			bytes_read = pread_exact(contact_db_fd, record + 2, name_length, offset);
 
 			if (bytes_read == -1)
 			{
@@ -280,18 +290,19 @@ static int _unlocked_search_contact(const char *query, size_t query_length, uint
 				return -1;
 			}
 
-			if (bytes_read < header[1])
+			if (bytes_read < name_length)
 			{
 				// corrupted database
 				return -2;
 			}
 
-			offset += header[1];
+			offset += name_length;
 
 			if (memcmpcaseins(record + 2, query, query_length) == 0)
 			{
 				// add phone number
-				bytes_read = pread_exact(contact_db_fd, record + 2 + header[1], header[2], offset);
+				bytes_read = pread_exact(contact_db_fd, record + 2 + name_length,
+										 phone_number_length, offset);
 
 				if (bytes_read == -1)
 				{
@@ -300,7 +311,7 @@ static int _unlocked_search_contact(const char *query, size_t query_length, uint
 					return -1;
 				}
 
-				if (bytes_read < header[2])
+				if (bytes_read < phone_number_length)
 				{
 					// corrupted database
 					free(record);
@@ -309,7 +320,7 @@ static int _unlocked_search_contact(const char *query, size_t query_length, uint
 
 				(*buf)[*match_count] = record;
 
-				*buf_size += 2 + header[1] + header[2];
+				*buf_size += 2 + name_length + phone_number_length;
 				++(*match_count);
 
 				if (*match_count == limit)
@@ -322,12 +333,12 @@ static int _unlocked_search_contact(const char *query, size_t query_length, uint
 				free(record);
 			}
 
-			offset += header[2];
+			offset += phone_number_length;
 		}
 		else
 		{
 			// just skip the rest of the record
-			offset += header[1] + header[2];
+			offset += name_length + phone_number_length;
 		}
 	}
 }
@@ -385,11 +396,6 @@ int search_contact(const char *query, size_t query_length, uint8_t limit, char *
 	}
 
 	int status = _unlocked_search_contact(query, query_length, limit, buf, match_count, buf_size);
-
-	if (status != 0)
-	{
-		free_query_buffer(*buf, *match_count);
-	}
 
 	if (!rwlock_release_reader(&semaphore))
 	{

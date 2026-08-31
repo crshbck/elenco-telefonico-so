@@ -21,6 +21,8 @@
 
 int conn_fd;
 
+#define fflush(stdin) int c;while ((c = getchar()) != '\n' && c != EOF);
+
 void prompt_auth()
 {
 	bool isopvalid = false;

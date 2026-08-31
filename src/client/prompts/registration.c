@@ -53,7 +53,7 @@ void prompt_registration(int conn_fd)
 			printf(" Registrazione eseguita con successo!\n\n");
 			exit(0);
 			break;
-		case INVALID_CREDENTIALS:
+		case USERNAME_TAKEN:
 			printf(" Username già registrato! Ritenta.\n");
 			break;
 		case SERVER_ERROR:

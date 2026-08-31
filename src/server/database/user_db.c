@@ -67,12 +67,12 @@ static int _unlocked_check_credentials(const char *username, const char *passwor
 {
 	off_t offset = 0;
 
-	unsigned char header;
+	unsigned char username_length;
 	ssize_t bytes_read;
 
 	while (1)
 	{
-		bytes_read = pread_exact(user_db_fd, &header, 1, offset);
+		bytes_read = pread_exact(user_db_fd, &username_length, 1, offset);
 
 		if (bytes_read == 0)
 		{
@@ -80,17 +80,17 @@ static int _unlocked_check_credentials(const char *username, const char *passwor
 			break;
 		}
 
-		offset += 1;
-
 		if (bytes_read == -1)
 		{
 			// error
 			return -1;
 		}
 
-		int record_size = 1 + 32 + header;
+		offset += 1;
 
-		if (header != strlen(username))
+		int record_size = 1 + 32 + username_length;
+
+		if (username_length != strlen(username))
 		{
 			// skip auth level + password + username
 			offset += record_size;
@@ -108,13 +108,19 @@ static int _unlocked_check_credentials(const char *username, const char *passwor
 			break;
 		}
 
-		offset += record_size;
-
 		if (bytes_read == -1)
 		{
 			// error
 			return -1;
 		}
+
+		if (bytes_read < record_size)
+		{
+			// corrupted database
+			return -2;
+		}
+
+		offset += record_size;
 
 		if (memcmp(&buffer[1 + 32], username, strlen(username)) == 0 &&
 			memcmp(&buffer[1], password, 32) == 0)
@@ -148,7 +154,7 @@ int check_credentials(const char *username, const char *password, auth_level_t *
 
 static int _unlocked_add_user(const user_t *user)
 {
-	int record_size = 1 + strlen(user->username) + 32 + 1;
+	int record_size = 1 + 1 + 32 + strlen(user->username);
 
 	unsigned char buffer[record_size];
 
@@ -191,6 +197,94 @@ int add_user(const user_t *user)
 	}
 
 	int status = _unlocked_add_user(user);
+
+	if (!rwlock_release_writer(&semaphore))
+	{
+		return -1;
+	}
+
+	return status;
+}
+
+static int _unlocked_change_permissions(const char *username, auth_level_t auth_level)
+{
+	off_t offset = 0;
+
+	unsigned char username_length;
+	ssize_t bytes_read;
+
+	while (1)
+	{
+		bytes_read = pread_exact(user_db_fd, &username_length, 1, offset);
+
+		if (bytes_read == 0)
+		{
+			// EOF
+			break;
+		}
+
+		if (bytes_read == -1)
+		{
+			// error
+			return -1;
+		}
+
+		offset += 1;
+
+		int record_size = 1 + 32 + username_length;
+
+		if (username_length != strlen(username))
+		{
+			// skip auth level + password + username
+			offset += record_size;
+			continue;
+		}
+
+		// auth level + password (fixed) + username
+		unsigned char buffer[record_size];
+
+		bytes_read = pread_exact(user_db_fd, buffer, record_size, offset);
+
+		if (bytes_read == 0)
+		{
+			// EOF
+			break;
+		}
+
+		if (bytes_read == -1)
+		{
+			// error
+			return -1;
+		}
+
+		if (bytes_read < record_size)
+		{
+			// corrupted database
+			return -2;
+		}
+
+		if (memcmp(&buffer[1 + 32], username, strlen(username)) == 0)
+		{
+			// no need to change offset
+			pwrite_exact(user_db_fd, &auth_level, 1, offset);
+
+			return 1;
+		}
+
+		offset += record_size;
+	}
+
+	return 0;
+}
+
+int change_permissions(const char *username, auth_level_t auth_level)
+{
+	if (!rwlock_get_writer(&semaphore))
+	{
+		return -1;
+	}
+
+	int status = _unlocked_change_permissions(username, auth_level);
 
 	if (!rwlock_release_writer(&semaphore))
 	{

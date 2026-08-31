@@ -55,7 +55,7 @@ bool send_packet(int conn_fd, status_t status, unsigned char *payload, uint16_t 
 
 		bytes_sent += (size_t) just_sent;
 	}
-#ifdef DEBUG
+
 	char *str;
 
 	switch (status)
@@ -93,7 +93,6 @@ bool send_packet(int conn_fd, status_t status, unsigned char *payload, uint16_t 
 	}
 
 	printf("Sent response status: %s with payload size %d\n", str, payload_size);
-#endif
 
 	return true;
 }

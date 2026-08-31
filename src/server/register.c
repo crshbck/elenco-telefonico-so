@@ -1,5 +1,5 @@
 #include "register.h"
-#include "common.h"
+#include "../common/utils.h"
 #include "database/user_db.h"
 #include "login.h"
 #include "sender.h"
@@ -8,31 +8,15 @@
 
 int handle_register(const packet_header_t *header, user_t *user, int conn_fd)
 {
-	if (header->payload_size > 32 + MAX_USERNAME_LEN)
-	{
-		send_packet(conn_fd, MALFORMED_REQUEST, NULL, 0);
-		return 0;
-	}
-
 	char *username, *password;
-	int username_length;
+	unsigned int username_length;
 
 	if (read_username_password(header, &username, &password, &username_length, conn_fd) == -1)
 	{
 		return -1;
 	}
 
-	if (username_length > MAX_USERNAME_LEN)
-	{
-		if (!send_packet(conn_fd, MALFORMED_REQUEST, NULL, 0))
-		{
-			fprintf(stderr, "Error sending packet!\n");
-			return -1;
-		}
-		return 0;
-	}
-
-	if (!check_username(username, username_length))
+	if (!is_printable(username, username_length))
 	{
 		if (!send_packet(conn_fd, MALFORMED_REQUEST, NULL, 0))
 		{
@@ -69,20 +53,19 @@ int handle_register(const packet_header_t *header, user_t *user, int conn_fd)
 		break;
 	}
 
-#ifdef DEBUG
 	printf("Registering user %s\n", username);
-#endif
-
-	free(user->username);
-	free(user->password);
-
-	user->username = username;
-	user->password = password;
 
 	switch (add_user(user))
 	{
 	case 0:
 		// ok
+		free(user->username);
+		free(user->password);
+
+		user->username = username;
+		user->password = password;
+		user->auth_level = 0;
+
 		if (!send_packet(conn_fd, OK, NULL, 0))
 		{
 			fprintf(stderr, "Error sending packet!\n");

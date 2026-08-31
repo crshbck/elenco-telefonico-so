@@ -168,6 +168,11 @@ status_t search_contact(int conn_fd, contact_t *output_buffer, const uint8_t max
 	size_t offset = 0;
 	*match_count = 0;
 
+	// todo
+	/*
+	che succede se dichiaro una lunghezza ma inserisco meno caratteri?
+	*/
+
 	while (offset < size && *match_count < max)
 	{
 		// sanity check
@@ -179,13 +184,27 @@ status_t search_contact(int conn_fd, contact_t *output_buffer, const uint8_t max
 		uint8_t name_length = _contact_buffer[offset];
 		uint8_t phone_number_length = _contact_buffer[offset + 1];
 
+		// todo test this
 		// sanity check
 		if (offset + 2 + name_length + phone_number_length > size)
 		{
-			break;
+			// declared sizes are not true
+			return SERVER_ERROR;
 		}
 
-		// todo check lunghezze
+		// todo test this
+		if (name_length > MAX_CONTACT_NAME_LEN || phone_number_length > MAX_PHONE_NUMBER_LENGTH)
+		{
+			return SERVER_ERROR;
+		}
+
+		// todo test this
+		// check if all characters are printable
+		if (!is_printable(output_buffer[*match_count].name, name_length) ||
+			!is_printable(output_buffer[*match_count].phone_number, phone_number_length))
+		{
+			return SERVER_ERROR;
+		}
 
 		// copy inside buffer
 		memcpy(output_buffer[*match_count].name, &_contact_buffer[offset + 2], name_length);

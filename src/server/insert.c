@@ -19,7 +19,8 @@ int handle_insert(const packet_header_t *header, int conn_fd)
 		return -1;
 	}
 
-	if (read_bytes < header->payload_size)
+	// at least 1B name_length + name 1B + phone_number 1B
+	if (read_bytes < header->payload_size || read_bytes < 3)
 	{
 		if (!send_packet(conn_fd, MALFORMED_REQUEST, NULL, 0))
 		{
@@ -29,10 +30,11 @@ int handle_insert(const packet_header_t *header, int conn_fd)
 		return 0;
 	}
 
-	int name_length = buffer[0];
-	int phone_number_length = header->payload_size - 1 - buffer[0];
+	unsigned int name_length = buffer[0];
+	unsigned int phone_number_length = header->payload_size - 1 - buffer[0];
 
-	if (name_length > MAX_CONTACT_NAME_LEN || phone_number_length > MAX_PHONE_NUMBER_LENGTH)
+	if (name_length == 0 || name_length > MAX_CONTACT_NAME_LEN || phone_number_length == 0 ||
+		phone_number_length > MAX_PHONE_NUMBER_LENGTH)
 	{
 		if (!send_packet(conn_fd, MALFORMED_REQUEST, NULL, 0))
 		{
@@ -41,12 +43,19 @@ int handle_insert(const packet_header_t *header, int conn_fd)
 		}
 		return 0;
 	}
-
-	// TODO check if already present
 
 	switch (add_contact(&buffer[1], &buffer[1 + name_length], name_length, phone_number_length))
 	{
 	case 1:
+		printf("Added contact '");
+
+		for (int i = 0; i < name_length; i++)
+		{
+			printf("%c", buffer[1 + i]);
+		}
+
+		printf("'\n");
+
 		if (!send_packet(conn_fd, OK, NULL, 0))
 		{
 			fprintf(stderr, "Error sending packet!\n");

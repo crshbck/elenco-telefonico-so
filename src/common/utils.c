@@ -1,6 +1,7 @@
 #include "utils.h"
 
 #include <errno.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -73,4 +74,17 @@ ssize_t send_exact(int fd, const void *buf, size_t count, int flags)
 	}
 
 	return (ssize_t) (count - bytes_left);
+}
+
+bool is_printable(const char *string, int len)
+{
+	for (int i = 0; i < len; i++)
+	{
+		if (string[i] < 0x20 || string[i] > 0x7E)
+		{
+			return false;
+		}
+	}
+
+	return true;
 }

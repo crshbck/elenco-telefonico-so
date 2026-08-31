@@ -338,6 +338,8 @@
 	
 	\subsection{Elevazione dei permessi}
 	
+	All'avvio del server, questo inizializzerà un thread adibito alla ricezione da \texttt{stdin} di caratteri. Se la stringa \texttt{`perm`} viene inserita, il server permetterà la modifica dei permessi di un utente.
+	
 	\section{Specifica del Client}
 	
 	Il client è un'applicazione da riga di comando che permette all'utente la connessione e l'interrogazione del server.
@@ -345,6 +347,16 @@
 	All'avvio viene instaurata una connessione al server tramite \textit{Socket TCP}, mostrando all'utente una serie di menù che permettono l'interazione con il server.
 	
 	\section{Compilazione e Avvio}
+	
+	Il progetto necessita dell'installazione della libreria \texttt{libssl-dev} per il supporto delle operazioni di hash.
+	Per installare questa libreria è sufficiente eseguire il comando 
+	
+	\begin{lstlisting}[language=bash]
+		$ sudo apt install libssl-dev
+	\end{lstlisting}
+	
+	Per la compilazione e avvio delle due applicazioni è sufficiente eseguire
+	
 	\begin{lstlisting}[language=bash]
 		# Compilazione del Server
 		$ make server

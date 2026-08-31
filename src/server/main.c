@@ -30,6 +30,7 @@ typedef struct _connection_args
 } connection_args;
 
 void *connection_handler(void *);
+void *input_handler(void *);
 
 void ipaddrtstr(int ip, char *result)
 {
@@ -86,10 +87,20 @@ int main(int argc, char **argv)
 		error("Socket listen error!");
 	}
 
-	printf("Started server on port %d!\n", SERVER_PORT);
+	printf("Started server on port %d!\n"
+		   "Commands:\n"
+		   "`perm` - Change user permissions\n\n",
+		   SERVER_PORT);
 
 	struct sockaddr_in client_addr = {0};
 	socklen_t client_addrlen = sizeof(client_addr);
+
+	pthread_t input_thread;
+	if (pthread_create(&input_thread, NULL, input_handler, NULL) != 0)
+	{
+		perror("Error starting input listening thread!");
+		exit(-1);
+	}
 
 	while (1)
 	{
@@ -112,12 +123,17 @@ int main(int argc, char **argv)
 			args->client_addr = client_addr.sin_addr.s_addr;
 			args->conn_fd = conn_fd;
 
-			pthread_create(&thread, NULL, connection_handler, (void *) args);
+			if (pthread_create(&thread, NULL, connection_handler, (void *) args) != 0)
+			{
+				perror("Error starting connection thread!");
+				exit(-1);
+			}
 		}
 		// Refuse connection
 		else
 		{
-			write(conn_fd, "Connection refused! Server Busy\n", 33);
+			printf("Cannot accept connection!\n");
+			send_packet(conn_fd, SERVER_PORT, NULL, 0);
 			close(conn_fd);
 		}
 	}
@@ -202,6 +218,14 @@ void *connection_handler(void *args)
 		else if (res == -1)
 		{
 			perror("Recv error header");
+
+			close(conn_args->conn_fd);
+			sem_post(&conn_sem);
+			return NULL;
+		}
+		else if (res < 3)
+		{
+			send_packet(conn_args->conn_fd, MALFORMED_REQUEST, NULL, 0);
 
 			close(conn_args->conn_fd);
 			sem_post(&conn_sem);
@@ -294,4 +318,82 @@ void *connection_handler(void *args)
 	}
 
 	return NULL;
+}
+
+void *input_handler(void *args)
+{
+	char input_buffer[32];
+	while (1)
+	{
+		if (fgets(input_buffer, 32, stdin) == NULL)
+		{
+			return (void *) -1;
+		}
+
+		input_buffer[strcspn(input_buffer, "\r\n")] = '\0';
+
+		if (strcmp(input_buffer, "quit") == 0)
+		{
+			return 0;
+		}
+		else if (strcmp(input_buffer, "perm") == 0)
+		{
+			printf("Insert username: ");
+
+			char username_buffer[MAX_USERNAME_LEN];
+
+			if (fgets(username_buffer, MAX_USERNAME_LEN, stdin) == NULL)
+			{
+				return (void *) -1;
+			}
+
+			username_buffer[strcspn(username_buffer, "\r\n")] = '\0';
+
+			printf("Auth level:\n"
+				   "0: Anonymous\n"
+				   "1: User\n"
+				   "2: Admin\n"
+				   "q: Quit\n\n");
+			if (fgets(input_buffer, 32, stdin) == NULL)
+			{
+				return (void *) -1;
+			}
+
+			auth_level_t auth_level;
+
+			if (input_buffer[0] == 'q')
+			{
+				continue;
+			}
+
+			if (input_buffer[0] < '0' || input_buffer[0] > '2')
+			{
+				printf("Invalid selection!");
+				continue;
+			}
+
+			auth_level = input_buffer[0] - '0';
+
+			switch (change_permissions(username_buffer, auth_level))
+			{
+			case 0:
+				printf("User not found!\n");
+				continue;
+				break;
+			case 1:
+				printf("Success!\n");
+				continue;
+				break;
+			case -1:
+				printf("Error!\n");
+				continue;
+				break;
+			}
+		}
+		else
+		{
+			printf("Unknown operation '%s'!\n", input_buffer);
+			continue;
+		}
+	}
 }

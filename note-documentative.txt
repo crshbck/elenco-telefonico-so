@@ -1,1 +1,0 @@
-necessaria installazione libreria: `sudo apt install libssl-dev`

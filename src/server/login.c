@@ -1,7 +1,6 @@
 #include "login.h"
 #include "../common/utils.h"
 #include "../protocol.h"
-#include "common.h"
 #include "database/user_db.h"
 #include "sender.h"
 
@@ -12,8 +11,18 @@
 #include <string.h>
 
 int read_username_password(const packet_header_t *header, char **username, char **password,
-						   int *username_length, int conn_fd)
+						   unsigned int *username_length, int conn_fd)
 {
+	if (header->payload_size < 32 + MIN_USERNAME_LEN ||
+		header->payload_size - 32 > MAX_USERNAME_LEN)
+	{
+		if (!send_packet(conn_fd, MALFORMED_REQUEST, NULL, 0))
+		{
+			fprintf(stderr, "Error sending packet!\n");
+		}
+		return -1;
+	}
+
 	unsigned char buffer[header->payload_size];
 
 	ssize_t read_bytes = recv_exact(conn_fd, buffer, header->payload_size, 0);
@@ -30,17 +39,6 @@ int read_username_password(const packet_header_t *header, char **username, char 
 		{
 			fprintf(stderr, "Error sending packet!\n");
 		}
-		return -1;
-	}
-
-	if (header->payload_size < 32 + MIN_USERNAME_LEN ||
-		header->payload_size - 32 > MAX_USERNAME_LEN)
-	{
-		if (!send_packet(conn_fd, MALFORMED_REQUEST, NULL, 0))
-		{
-			fprintf(stderr, "Error sending packet!\n");
-		}
-		discard_bytes(conn_fd, header->payload_size);
 		return -1;
 	}
 
@@ -70,17 +68,8 @@ int read_username_password(const packet_header_t *header, char **username, char 
 
 int handle_login(const packet_header_t *header, user_t *user, int conn_fd)
 {
-	if (header->payload_size > 32 + MAX_USERNAME_LEN)
-	{
-		if (!send_packet(conn_fd, MALFORMED_REQUEST, NULL, 0))
-		{
-			fprintf(stderr, "Error sending packet!\n");
-		}
-		return -1;
-	}
-
 	char *username, *password;
-	int username_length;
+	unsigned int username_length;
 
 	if (read_username_password(header, &username, &password, &username_length, conn_fd) == -1)
 	{
@@ -89,7 +78,7 @@ int handle_login(const packet_header_t *header, user_t *user, int conn_fd)
 
 	printf("Checking db against '%s'\n", username);
 
-	if (!check_username(username, username_length))
+	if (!is_printable(username, username_length))
 	{
 
 		if (!send_packet(conn_fd, MALFORMED_REQUEST, NULL, 0))
