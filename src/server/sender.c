@@ -16,17 +16,18 @@ bool send_packet(int conn_fd, status_t status, unsigned char *payload, uint16_t 
 	}
 
 	// Status: 1B + Payload size: 2B + Payload: ?B
-	size_t buffer_size = 1 + 2 + payload_size;
+	size_t buffer_size = 1 + 1 + 2 + payload_size;
 	char buffer[buffer_size];
 
-	buffer[0] = (char) status;
+	buffer[0] = STARTING_SEQ;
+	buffer[1] = (char) status;
 
 	uint16_t net_size = htons(payload_size);
-	memcpy(&buffer[1], &net_size, sizeof(net_size));
+	memcpy(&buffer[2], &net_size, sizeof(net_size));
 
 	if (payload_size > 0)
 	{
-		memcpy(&buffer[3], payload, payload_size);
+		memcpy(&buffer[4], payload, payload_size);
 	}
 
 	size_t bytes_sent = 0;

@@ -29,9 +29,32 @@ status_t login(int conn_fd, const char *username, const uint8_t *password, size_
 		return SERVER_ERROR;
 	}
 
+	unsigned char start_seq;
+	ssize_t res = recv_exact(conn_fd, &start_seq, 1, 0);
+
+	if (res == -1)
+	{
+		printf("Il server non risponde, riprova più tardi!\n");
+		exit(0);
+	}
+
+	if (res < 1)
+	{
+		return SERVER_ERROR;
+	}
+
+	if (start_seq != STARTING_SEQ)
+	{
+		return SERVER_ERROR;
+	}
+
+	printf("%02X \n", start_seq);
+
 	unsigned char header[3];
 
-	ssize_t res = recv_exact(conn_fd, header, 3, 0);
+	res = recv_exact(conn_fd, header, 3, 0);
+
+	printf("%02X %02X %02X \n", header[0], header[1], header[2]);
 
 	if (res == -1)
 	{
@@ -47,6 +70,8 @@ status_t login(int conn_fd, const char *username, const uint8_t *password, size_
 	if (header[0] == OK)
 	{
 		res = recv_exact(conn_fd, header, 1, 0);
+
+		printf("%02X\n", header);
 
 		if (res == -1)
 		{
@@ -84,9 +109,28 @@ status_t register_user(int conn_fd, const char *username, const uint8_t *passwor
 		return SERVER_ERROR;
 	}
 
+	unsigned char start_seq;
+	ssize_t res = recv_exact(conn_fd, &start_seq, 1, 0);
+
+	if (res == -1)
+	{
+		printf("Il server non risponde, riprova più tardi!\n");
+		exit(0);
+	}
+
+	if (res < 1)
+	{
+		return SERVER_ERROR;
+	}
+
+	if (start_seq != STARTING_SEQ)
+	{
+		return SERVER_ERROR;
+	}
+
 	unsigned char header[3];
 
-	ssize_t res = recv_exact(conn_fd, header, 3, 0);
+	res = recv_exact(conn_fd, header, 3, 0);
 
 	if (res == -1)
 	{
@@ -120,9 +164,28 @@ status_t search_contact(int conn_fd, contact_t *output_buffer, const uint8_t max
 		return SERVER_ERROR;
 	}
 
+	unsigned char start_seq;
+	ssize_t res = recv_exact(conn_fd, &start_seq, 1, 0);
+
+	if (res == -1)
+	{
+		printf("Il server non risponde, riprova più tardi!\n");
+		exit(0);
+	}
+
+	if (res < 1)
+	{
+		return SERVER_ERROR;
+	}
+
+	if (start_seq != STARTING_SEQ)
+	{
+		return SERVER_ERROR;
+	}
+
 	unsigned char header[3];
 
-	ssize_t res = recv_exact(conn_fd, header, 3, 0);
+	res = recv_exact(conn_fd, header, 3, 0);
 
 	if (res == -1)
 	{
@@ -240,9 +303,28 @@ status_t add_contact(int conn_fd, const char *name, const char *phone_number, si
 		return SERVER_ERROR;
 	}
 
+	unsigned char start_seq;
+	ssize_t res = recv_exact(conn_fd, &start_seq, 1, 0);
+
+	if (res == -1)
+	{
+		printf("Il server non risponde, riprova più tardi!\n");
+		exit(0);
+	}
+
+	if (res < 1)
+	{
+		return SERVER_ERROR;
+	}
+
+	if (start_seq != STARTING_SEQ)
+	{
+		return SERVER_ERROR;
+	}
+
 	unsigned char header[3];
 
-	ssize_t res = recv_exact(conn_fd, header, 3, 0);
+	res = recv_exact(conn_fd, header, 3, 0);
 
 	if (res == -1)
 	{
@@ -275,9 +357,28 @@ status_t delete_contact(int conn_fd, const char *query, size_t query_length)
 		return SERVER_ERROR;
 	}
 
+	unsigned char start_seq;
+	ssize_t res = recv_exact(conn_fd, &start_seq, 1, 0);
+
+	if (res == -1)
+	{
+		printf("Il server non risponde, riprova più tardi!\n");
+		exit(0);
+	}
+
+	if (res < 1)
+	{
+		return SERVER_ERROR;
+	}
+
+	if (start_seq != STARTING_SEQ)
+	{
+		return SERVER_ERROR;
+	}
+
 	unsigned char header[3];
 
-	ssize_t res = recv_exact(conn_fd, header, 3, 0);
+	res = recv_exact(conn_fd, header, 3, 0);
 
 	if (res == -1)
 	{
