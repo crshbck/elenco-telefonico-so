@@ -15,7 +15,7 @@ bool send_packet(int conn_fd, status_t status, unsigned char *payload, uint16_t 
 		return false;
 	}
 
-	// Status: 1B + Payload size: 2B + Payload: ?B
+	// Start Seq: 1B + Status: 1B + Payload size: 2B + Payload: ?B
 	size_t buffer_size = 1 + 1 + 2 + payload_size;
 	char buffer[buffer_size];
 
